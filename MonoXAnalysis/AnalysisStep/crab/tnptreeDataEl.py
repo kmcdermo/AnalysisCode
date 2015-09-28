@@ -32,7 +32,8 @@ isMCFlag = False
 # Define the input source
 process.source = cms.Source("PoolSource", 
     fileNames = cms.untracked.vstring([
-            '/store/data/Run2015C/SingleMuon/MINIAOD/PromptReco-v1/000/253/888/00000/DA473838-0941-E511-9644-02163E014405.root',
+            '/store/data/Run2015D/SingleElectron/MINIAOD/PromptReco-v3/000/256/675/00000/D8CD44FA-9C5F-E511-8B24-02163E0134DD.root',
+            #            '/store/data/Run2015C/SingleMuon/MINIAOD/PromptReco-v1/000/253/888/00000/DA473838-0941-E511-9644-02163E014405.root',
     ])
 )
 
@@ -45,7 +46,7 @@ if isMCFlag:
     process.GlobalTag.globaltag = 'MCRUN2_74_V9A::All'   # for Simulation
 else:
     #    process.GlobalTag.globaltag = 'GR_P_V56::All'        # for Data 50ns
-    process.GlobalTag.globaltag = '74X_dataRun2_Prompt_v1'        # for Data 25ns
+    process.GlobalTag.globaltag = '74X_dataRun2_Prompt_v2'        # for Data 25ns - 2015D
 
 # Select good primary vertices
 process.goodVertices = cms.EDFilter("VertexSelector",
