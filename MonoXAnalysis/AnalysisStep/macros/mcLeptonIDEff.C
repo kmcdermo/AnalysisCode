@@ -1,9 +1,8 @@
 #include <fstream>
 
-<<<<<<< HEAD
 void computeEff(TTree* tree, TH1F*& puhist, const int nbins, const double ptmin, const double ptmax, const double etamin, const double etamax, const double wgtsum, const double lumi, const TString lepton, const TString region, const TString id, std::ofstream & effyield, TH1D*& effhist, const int bin);
 
-void mcEfficiency(TString lepton, TString region, TString id) {
+void mcLeptonIDEff(TString lepton, TString region, TString id) {
 
   ///////////////////////
   // Input TnP MC Tree //

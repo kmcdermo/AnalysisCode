@@ -2,7 +2,7 @@
 
 void computeMCEff(TTree* tree, TH1F*& puhist, const int nbins, const double ptmin, const double ptmax, const double etamin, const double etamax, const double wgtsum, const double lumi, const TString lepton, const TString region, const TString trig, const TString outtrig, TH1D*& effhist, const int bin);
 
-void trigMCEff(){
+void trigEff_mc(){
 
   ////////////////////////
   // Input TnP MC Trees //

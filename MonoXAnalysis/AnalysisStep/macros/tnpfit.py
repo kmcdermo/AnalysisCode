@@ -39,7 +39,7 @@ else :
             TemplateDir = "output/electron/Data/endcap/"+idtype+"/"
 
 
-OutputFilePrefix = "test"
+OutputFilePrefix = "testfit"
 
 PDFName = "pdfSignalPlusBackground"
 

@@ -3,7 +3,7 @@ void CMSLumi(TCanvas *& canv, const Int_t iPosX);
 
 void makecanvas(TH1D*& mchist, TH1D*& datahist, const TString lepton, const TString region, const TString trig);
 
-void trigSFs(){
+void trigScaleFactors(){
 
   ///////////////
   TStyle * tdrStyle = new TStyle("tdrStyle","Style for P-TDR");

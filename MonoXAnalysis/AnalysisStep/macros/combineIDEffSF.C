@@ -1,4 +1,4 @@
-void allinone(){
+void combineLeptonEffSF(){
 
   // just do this by hand
 

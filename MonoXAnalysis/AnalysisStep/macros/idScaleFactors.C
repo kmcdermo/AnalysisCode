@@ -1,7 +1,7 @@
 void SetTDRStyle(TStyle *& style);
 void CMSLumi(TCanvas *& canv, const Int_t iPosX);
 
-void scaleFactors(TString lepton, TString region, TString id, TString shape1, TString shape2){
+void idScaleFactors(TString lepton, TString region, TString id, TString shape1, TString shape2){
 
   TStyle * tdrStyle = new TStyle("tdrStyle","Style for P-TDR");
   SetTDRStyle(tdrStyle);

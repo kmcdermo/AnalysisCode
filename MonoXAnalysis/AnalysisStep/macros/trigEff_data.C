@@ -2,7 +2,7 @@
 
 void computeDataEff(TTree* tree, const int nbins, const double ptmin, const double ptmax, const double etamin, const double etamax, const TString lepton, const TString region, const TString trig, const TString outtrig, TH1D*& effhist, const int bin);
 
-void trigDataEff(){
+void trigEff_data(){
 
   //////////////////////////
   // Input TnP Data Trees //

@@ -53,7 +53,7 @@ void savecanv(TFile *& file, TString treedir, TString plot, TString outdir, TStr
   delete canv;
 }
 
-void extract(TString lepton, TString region, TString id, TString shape){
+void extractIDEff_data(TString lepton, TString region, TString id, TString shape){
 
   TString outdir  = Form("output/%s/Data/%s/%s", lepton.Data(), region.Data(), id.Data());
 
