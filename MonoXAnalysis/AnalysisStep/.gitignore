@@ -1,0 +1,10 @@
+*~
+*.csv
+*.png
+*.log
+*.root
+*.o
+*.so
+*.d
+*.pyc
+*.txt
