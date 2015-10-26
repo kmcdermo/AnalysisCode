@@ -1,4 +1,4 @@
-void combineLeptonEffSF(){
+void combineIDEffSF(){
 
   // just do this by hand
 
@@ -24,7 +24,7 @@ void combineLeptonEffSF(){
 
   TFile * infile5 = TFile::Open( "output/electron/scalefactor/barrel/veto/scalefactors.root" );
   TH1D  * sfhist5 = (TH1D*)infile5->Get("effhist");
-  sfhist5->SetName("electron_barrel_loose_sf");
+  sfhist5->SetName("electron_barrel_veto_sf");
 
   TFile * infile6 = TFile::Open( "output/electron/scalefactor/barrel/tight/scalefactors.root" );
   TH1D  * sfhist6 = (TH1D*)infile6->Get("effhist");
@@ -32,7 +32,7 @@ void combineLeptonEffSF(){
 
   TFile * infile7 = TFile::Open( "output/electron/scalefactor/endcap/veto/scalefactors.root" );
   TH1D  * sfhist7 = (TH1D*)infile7->Get("effhist");
-  sfhist7->SetName("electron_endcap_loose_sf");
+  sfhist7->SetName("electron_endcap_veto_sf");
 
   TFile * infile8 = TFile::Open( "output/electron/scalefactor/endcap/tight/scalefactors.root" );
   TH1D  * sfhist8 = (TH1D*)infile8->Get("effhist");
@@ -40,7 +40,7 @@ void combineLeptonEffSF(){
 
   //////////////////////////////////////
 
-  TFile * outfile  = new TFile("output/leptonsfs.root","RECREATE");
+  TFile * outfile  = new TFile("output/leptonIDsfs.root","RECREATE");
   outfile->cd();
   sfhist1->Write();
   sfhist2->Write();

@@ -111,6 +111,7 @@ void makecanvas(TH1D*& mchist, TH1D*& datahist, const TString lepton, const TStr
   ratiopad->SetBottomMargin(0.2);
 
   TH1D* datahistc = (TH1D*)datahist->Clone();
+  datahistc->SetName("effhist");
   datahistc->SetMaximum(1.1);
   datahistc->SetMinimum(0.9);
 
