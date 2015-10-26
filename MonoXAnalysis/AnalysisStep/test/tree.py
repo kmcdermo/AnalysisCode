@@ -41,15 +41,29 @@ redoJetsMET = False
 usePrivateSQlite = False
 
 # Apply L2L3 residual corrections
-applyL2L3Residuals = False
+
+if isMC :
+    applyL2L3Residuals = False
+else :
+    applyL2L3Residuals = True
 
 # Process name used in MiniAOD -- needed to get the correct trigger results, and also for redoing the MET
-miniAODProcess = "PAT"
+miniAODProcess = "RECO" #"PAT"
 
 # Define the input source
 process.source = cms.Source("PoolSource", 
     fileNames = cms.untracked.vstring([
-        '/store/data/Run2015D/DoubleMuon/MINIAOD/05Oct2015-v1/30000/B0E177F6-8A6F-E511-A81F-0025905B85D6.root'
+            # doubleMu rereco
+#           '/store/data/Run2015D/DoubleMuon/MINIAOD/05Oct2015-v1/30000/04008DF6-8A6F-E511-B034-0025905A6136.root'
+            #doubleMu prv4
+#            '/store/data/Run2015D/DoubleMuon/MINIAOD/PromptReco-v4/000/258/159/00000/0C6D4AB0-6F6C-E511-8A64-02163E0133CD.root'
+            # DY mAv2
+#            '/store/mc/RunIISpring15MiniAODv2/DYJetsToLL_M-50_TuneCUETP8M1_13TeV-amcatnloFXFX-pythia8/MINIAODSIM/74X_mcRun2_asymptotic_v2-v1/50000/00759690-D16E-E511-B29E-00261894382D.root'
+           # QCD
+#            '/store/mc/RunIISpring15MiniAODv2/QCD_HT100to200_TuneCUETP8M1_13TeV-madgraphMLM-pythia8/MINIAODSIM/74X_mcRun2_asymptotic_v2-v1/10000/00628FDD-AA6C-E511-9A4D-0025905B85AA.root'
+            # W jets
+            '/store/mc/RunIISpring15MiniAODv2/WJetsToLNu_TuneCUETP8M1_13TeV-amcatnloFXFX-pythia8/MINIAODSIM/74X_mcRun2_asymptotic_v2-v1/40000/008865AA-596D-E511-92F1-0025905A6110.root'
+
     ])
 )
 
@@ -61,7 +75,8 @@ from Configuration.AlCa.GlobalTag import GlobalTag
 if isMC:
     process.GlobalTag.globaltag = '74X_mcRun2_asymptotic_v2'   # for Simulation
 else:
-    process.GlobalTag.globaltag = '74X_dataRun2_Prompt_v4'            # for Data
+    process.GlobalTag.globaltag = '74X_dataRun2_Prompt_v4'            # for Data --> PR v4 
+#    process.GlobalTag.globaltag = '74X_dataRun2_reMiniAOD_v0'            # for Data --> Oct05 rereco
 
 # Setup the private SQLite -- Ripped from PhysicsTools/PatAlgos/test/corMETFromMiniAOD.py
 if usePrivateSQlite:

@@ -87,13 +87,25 @@ LeptonTnPInfoProducer::LeptonTnPInfoProducer(const edm::ParameterSet& iConfig):
 {
     produces<edm::ValueMap<float> >("munvtxmap");
     produces<edm::ValueMap<float> >("muwgtmap");
+
+    // Muon HLT Refs
     produces<pat::MuonRefVector>("hltmu20muonrefs");
     produces<pat::MuonRefVector>("hlttkmu20muonrefs");
+    //    produces<pat::MuonRefVector>("hltmu24muonrefs");
+    //    produces<pat::MuonRefVector>("hlttkmu24muonrefs");
+
     produces<pat::MuonRefVector>("loosemuonrefs");
     produces<pat::MuonRefVector>("tightmuonrefs");
     produces<pat::MuonCollection>("tightmuons");
     produces<edm::ValueMap<float> >("elnvtxmap");
     produces<edm::ValueMap<float> >("elwgtmap");
+
+    // Electron HLT Refs
+    produces<pat::ElectronRefVector>("hltel23calotrkisoelectronmcrefs");
+    produces<pat::ElectronRefVector>("hltel27wp85electronmcrefs");
+    produces<pat::ElectronRefVector>("hltel23wplooseelectrondatarefs");
+    produces<pat::ElectronRefVector>("hltel27wplooseelectrondatarefs");
+
     produces<pat::ElectronRefVector>("vetoelectronrefs");
     produces<pat::ElectronRefVector>("looseelectronrefs");
     produces<pat::ElectronRefVector>("mediumelectronrefs");
@@ -142,8 +154,12 @@ void LeptonTnPInfoProducer::produce(edm::Event& iEvent, const edm::EventSetup& i
 
     std::auto_ptr<edm::ValueMap<float> > outputmunvtxmap(new ValueMap<float>());
     std::auto_ptr<edm::ValueMap<float> > outputmuwgtmap(new ValueMap<float>());
+
     std::auto_ptr<pat::MuonRefVector> outputhltmu20muonrefs(new pat::MuonRefVector);
     std::auto_ptr<pat::MuonRefVector> outputhlttkmu20muonrefs(new pat::MuonRefVector);
+    //    std::auto_ptr<pat::MuonRefVector> outputhltmu24muonrefs(new pat::MuonRefVector);
+    //    std::auto_ptr<pat::MuonRefVector> outputhlttkmu24muonrefs(new pat::MuonRefVector);
+
     std::auto_ptr<pat::MuonRefVector> outputloosemuonrefs(new pat::MuonRefVector);
     std::auto_ptr<pat::MuonRefVector> outputtightmuonrefs(new pat::MuonRefVector);
     std::auto_ptr<pat::MuonCollection> outputtightmuons(new pat::MuonCollection);
@@ -154,6 +170,11 @@ void LeptonTnPInfoProducer::produce(edm::Event& iEvent, const edm::EventSetup& i
     std::auto_ptr<pat::ElectronRefVector> outputmediumelectronrefs(new pat::ElectronRefVector);
     std::auto_ptr<pat::ElectronRefVector> outputtightelectronrefs(new pat::ElectronRefVector);
     std::auto_ptr<pat::ElectronCollection> outputtightelectrons(new pat::ElectronCollection);
+
+    std::auto_ptr<pat::ElectronRefVector> outputhltel23calotrkisoelectronmcrefs(new pat::ElectronRefVector);
+    std::auto_ptr<pat::ElectronRefVector> outputhltel27wp85electronmcrefs(new pat::ElectronRefVector);
+    std::auto_ptr<pat::ElectronRefVector> outputhltel23wplooseelectrondatarefs(new pat::ElectronRefVector);
+    std::auto_ptr<pat::ElectronRefVector> outputhltel27wplooseelectrondatarefs(new pat::ElectronRefVector);
 
     float wgt = 1.0;
     if (geninfoH.isValid()) wgt = geninfoH->weight(); 
@@ -173,6 +194,8 @@ void LeptonTnPInfoProducer::produce(edm::Event& iEvent, const edm::EventSetup& i
         bool triggermatched = false;
         bool hltisomu20matched = false;
         bool hltisotkmu20matched = false;
+	//        bool hltisomu24matched = false;
+	//        bool hltisotkmu24matched = false;
         for (pat::TriggerObjectStandAlone trgobj : *triggerObjectsH) {
             trgobj.unpackPathNames(trigNames);
             for (std::string trigpath : tagmuontriggers) {
@@ -180,11 +203,15 @@ void LeptonTnPInfoProducer::produce(edm::Event& iEvent, const edm::EventSetup& i
             }
             if (trgobj.hasPathName("HLT_IsoMu20_v*"  , true, true) && deltaR(trgobj.eta(), trgobj.phi(), muons_iter->eta(), muons_iter->phi()) < tagmuontrigmatchdR) hltisomu20matched   = true;
             if (trgobj.hasPathName("HLT_IsoTkMu20_v*", true, true) && deltaR(trgobj.eta(), trgobj.phi(), muons_iter->eta(), muons_iter->phi()) < tagmuontrigmatchdR) hltisotkmu20matched = true;
+	    //            if (trgobj.hasPathName("HLT_IsoMu24_v*"  , true, true) && deltaR(trgobj.eta(), trgobj.phi(), muons_iter->eta(), muons_iter->phi()) < tagmuontrigmatchdR) hltisomu24matched   = true;
+	    //            if (trgobj.hasPathName("HLT_IsoTkMu24_v*", true, true) && deltaR(trgobj.eta(), trgobj.phi(), muons_iter->eta(), muons_iter->phi()) < tagmuontrigmatchdR) hltisotkmu24matched = true;
         }
         if (!requiremuonhlt) triggermatched = true;
 
         if (verticesH->size() != 0 && hltisomu20matched                                                               ) outputhltmu20muonrefs  ->push_back(pat::MuonRef(muonsH, muons_iter - muonsH->begin()));
         if (verticesH->size() != 0 && hltisotkmu20matched                                                             ) outputhlttkmu20muonrefs->push_back(pat::MuonRef(muonsH, muons_iter - muonsH->begin()));
+	//        if (verticesH->size() != 0 && hltisomu24matched                                                               ) outputhltmu24muonrefs  ->push_back(pat::MuonRef(muonsH, muons_iter - muonsH->begin()));
+	//        if (verticesH->size() != 0 && hltisotkmu24matched                                                             ) outputhlttkmu24muonrefs->push_back(pat::MuonRef(muonsH, muons_iter - muonsH->begin()));
         if (verticesH->size() != 0 && muon::isLooseMuon(*muons_iter)                        && isoval <= loosemuisocut) outputloosemuonrefs    ->push_back(pat::MuonRef(muonsH, muons_iter - muonsH->begin()));
         if (verticesH->size() != 0 && muon::isTightMuon(*muons_iter, *(verticesH->begin())) && isoval <= tightmuisocut) outputtightmuonrefs    ->push_back(pat::MuonRef(muonsH, muons_iter - muonsH->begin()));
         if (verticesH->size() != 0 && muon::isTightMuon(*muons_iter, *(verticesH->begin())) && isoval <= tightmuisocut) {
@@ -198,15 +225,28 @@ void LeptonTnPInfoProducer::produce(edm::Event& iEvent, const edm::EventSetup& i
     vector<float> elwgtvector;
     for (vector<pat::Electron>::const_iterator electrons_iter = electronsH->begin(); electrons_iter != electronsH->end(); ++electrons_iter) {
         const Ptr<pat::Electron> electronPtr(electronsH, electrons_iter - electronsH->begin());
+
         bool triggermatched = false;
+        bool hltel23calotrkisomcmatched = false;
+        bool hltel27wp85mcmatched = false;
+        bool hltel23wploosedatamatched = false;
+        bool hltel27wploosedatamatched = false;
         for (pat::TriggerObjectStandAlone trgobj : *triggerObjectsH) {
             trgobj.unpackPathNames(trigNames);
             for (std::string trigpath : tagelectrontriggers) {
                 if (trgobj.hasPathName(trigpath, true, false) && deltaR(trgobj.eta(), trgobj.phi(), electrons_iter->eta(), electrons_iter->phi()) < tagelectrontrigmatchdR) triggermatched = true;
             }
+            if (trgobj.hasPathName("HLT_Ele23_CaloIdL_TrackIdL_IsoVL_v*", true, true) && deltaR(trgobj.eta(), trgobj.phi(), electrons_iter->eta(), electrons_iter->phi()) < tagelectrontrigmatchdR) hltel23calotrkisomcmatched = true;
+            if (trgobj.hasPathName("HLT_Ele27_WP85_Gsf_v*"              , true, true) && deltaR(trgobj.eta(), trgobj.phi(), electrons_iter->eta(), electrons_iter->phi()) < tagelectrontrigmatchdR) hltel27wp85mcmatched       = true;
+            if (trgobj.hasPathName("HLT_Ele23_WPLoose_Gsf_v*"               , true, true) && deltaR(trgobj.eta(), trgobj.phi(), electrons_iter->eta(), electrons_iter->phi()) < tagelectrontrigmatchdR) hltel23wploosedatamatched  = true;
+            if (trgobj.hasPathName("HLT_Ele27_WPLoose_Gsf_v*"               , true, true) && deltaR(trgobj.eta(), trgobj.phi(), electrons_iter->eta(), electrons_iter->phi()) < tagelectrontrigmatchdR) hltel27wploosedatamatched  = true;
         }
         if (!requireelectronhlt) triggermatched = true;
 
+        if (verticesH->size() != 0 && hltel23calotrkisomcmatched       ) outputhltel23calotrkisoelectronmcrefs->push_back(pat::ElectronRef(electronsH, electrons_iter - electronsH->begin()));
+        if (verticesH->size() != 0 && hltel27wp85mcmatched             ) outputhltel27wp85electronmcrefs      ->push_back(pat::ElectronRef(electronsH, electrons_iter - electronsH->begin()));
+        if (verticesH->size() != 0 && hltel23wploosedatamatched        ) outputhltel23wplooseelectrondatarefs ->push_back(pat::ElectronRef(electronsH, electrons_iter - electronsH->begin()));
+        if (verticesH->size() != 0 && hltel27wploosedatamatched        ) outputhltel27wplooseelectrondatarefs ->push_back(pat::ElectronRef(electronsH, electrons_iter - electronsH->begin()));
         if (verticesH->size() != 0 && (*electronVetoIdH)  [electronPtr]) outputvetoelectronrefs  ->push_back(pat::ElectronRef(electronsH, electrons_iter - electronsH->begin()));
         if (verticesH->size() != 0 && (*electronLooseIdH) [electronPtr]) outputlooseelectronrefs ->push_back(pat::ElectronRef(electronsH, electrons_iter - electronsH->begin()));
         if (verticesH->size() != 0 && (*electronMediumIdH)[electronPtr]) outputmediumelectronrefs->push_back(pat::ElectronRef(electronsH, electrons_iter - electronsH->begin()));
@@ -238,6 +278,8 @@ void LeptonTnPInfoProducer::produce(edm::Event& iEvent, const edm::EventSetup& i
     iEvent.put(outputmuwgtmap, "muwgtmap");
     iEvent.put(outputhltmu20muonrefs, "hltmu20muonrefs");
     iEvent.put(outputhlttkmu20muonrefs, "hlttkmu20muonrefs");
+    //    iEvent.put(outputhltmu24muonrefs, "hltmu24muonrefs");
+    //    iEvent.put(outputhlttkmu24muonrefs, "hlttkmu24muonrefs");
     iEvent.put(outputloosemuonrefs, "loosemuonrefs");
     iEvent.put(outputtightmuonrefs, "tightmuonrefs");
     iEvent.put(outputtightmuons, "tightmuons");
@@ -248,6 +290,10 @@ void LeptonTnPInfoProducer::produce(edm::Event& iEvent, const edm::EventSetup& i
     iEvent.put(outputmediumelectronrefs, "mediumelectronrefs");
     iEvent.put(outputtightelectronrefs, "tightelectronrefs");
     iEvent.put(outputtightelectrons, "tightelectrons");
+    iEvent.put(outputhltel23calotrkisoelectronmcrefs, "hltel23calotrkisoelectronmcrefs");
+    iEvent.put(outputhltel27wp85electronmcrefs, "hltel27wp85electronmcrefs");
+    iEvent.put(outputhltel23wplooseelectrondatarefs, "hltel23wplooseelectrondatarefs");
+    iEvent.put(outputhltel27wplooseelectrondatarefs, "hltel27wplooseelectrondatarefs");
 }
 
 void LeptonTnPInfoProducer::beginJob() {
