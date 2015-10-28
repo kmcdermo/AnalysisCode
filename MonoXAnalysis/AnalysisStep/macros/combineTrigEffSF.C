@@ -40,6 +40,57 @@ void combineTrigEffSF(){
 
   //////////////////////////////////////
 
+  double muptbins[]   = {10, 15, 17.5, 20, 20.025, 20.05, 20.1, 20.15, 20.2, 20.3, 20.5, 20.75, 21, 22, 23, 24, 25, 27.5, 30, 35, 40, 45, 50, 60, 70, 85, 100, 1000}; //27
+  double elptbins23[] = {10, 15, 20, 22, 22.5, 22.75, 23, 23.25, 23.5, 24, 24.5, 25, 26, 27, 28, 30, 35, 40, 45, 50, 60, 70, 85, 100, 1000}; //24
+  double elptbins27[] = {10, 20, 25, 26, 26.5, 26.75, 27, 27.25, 27.5, 28, 28.5, 29, 30, 31, 32, 33, 35, 40, 45, 50, 60, 70, 85, 100, 1000}; //24
+  double muetabins[]  = {0.,1.2,2.5};
+  double eletabins[]  = {0.,1.4442,1.556,2.5};
+
+  TH2D * hltmu20 = new TH2D("hltmu20_SF","HLT_IsoMu20_v* Scale Factors",27,muptbins,2,muetabins);
+  for (int i = 1; i <= hltmu20->GetNbinsX(); i++) {
+    //barrel
+    hltmu20->SetBinContent(i,1,sfhist1->GetBinContent(i));
+    hltmu20->SetBinError(i,1,sfhist1->GetBinError(i));
+
+    //endcap
+    hltmu20->SetBinContent(i,2,sfhist3->GetBinContent(i));
+    hltmu20->SetBinError(i,2,sfhist3->GetBinError(i));
+  }
+
+  TH2D * hlttkmu20 = new TH2D("hlttkmu20_SF","HLT_IsoTkMu20_v* Scale Factors",27,muptbins,2,muetabins);
+  for (int i = 1; i <= hlttkmu20->GetNbinsX(); i++) {
+    //barrel
+    hlttkmu20->SetBinContent(i,1,sfhist2->GetBinContent(i));
+    hlttkmu20->SetBinError(i,1,sfhist2->GetBinError(i));
+
+    //endcap
+    hlttkmu20->SetBinContent(i,2,sfhist4->GetBinContent(i));
+    hlttkmu20->SetBinError(i,2,sfhist4->GetBinError(i));
+  }
+
+  TH2D * hltel23 = new TH2D("hltel23_SF","HLT_Ele23_WPLoose_Gsf_v* / HLT_Ele23_CaloIdL_TrackIdL_IsoVL_v*",24,elptbins23,3,eletabins);
+  for (int i = 1; i <= hltel23->GetNbinsX(); i++) {
+    //barrel
+    hltel23->SetBinContent(i,1,sfhist5->GetBinContent(i));
+    hltel23->SetBinError(i,1,sfhist5->GetBinError(i));
+
+    //endcap
+    hltel23->SetBinContent(i,3,sfhist7->GetBinContent(i));
+    hltel23->SetBinError(i,3,sfhist7->GetBinError(i));
+  }
+
+  TH2D * hltel27 = new TH2D("hltel27_SF","HLT_Ele27_WPLoose_Gsf_v* / HLT_Ele27_WP85_Gsf_v*",24,elptbins27,3,eletabins);
+  for (int i = 1; i <= hltel27->GetNbinsX(); i++) {
+    //barrel
+
+    hltel27->SetBinContent(i,1,sfhist6->GetBinContent(i));
+    hltel27->SetBinError(i,1,sfhist6->GetBinError(i));
+
+    //endcap
+    hltel27->SetBinContent(i,3,sfhist8->GetBinContent(i));
+    hltel27->SetBinError(i,3,sfhist8->GetBinError(i));
+  }
+
   TFile * outfile  = new TFile("output_trig/leptonTrigsfs.root","RECREATE");
   outfile->cd();
   sfhist1->Write();
@@ -50,6 +101,11 @@ void combineTrigEffSF(){
   sfhist6->Write();
   sfhist7->Write();
   sfhist8->Write();
+
+  hltmu20  ->Write();
+  hlttkmu20->Write();
+  hltel23  ->Write();
+  hltel27  ->Write();
 
   outfile->Close();
 }

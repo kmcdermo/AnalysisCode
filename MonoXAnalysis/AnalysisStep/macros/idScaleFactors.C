@@ -1,14 +1,21 @@
+#include <fstream>
+
 void SetTDRStyle(TStyle *& style);
 void CMSLumi(TCanvas *& canv, const Int_t iPosX);
 
 void idScaleFactors(TString lepton, TString region, TString id, TString shape1, TString shape2){
-
+  
+  /////////////////////////////////////////////////////////////
   TStyle * tdrStyle = new TStyle("tdrStyle","Style for P-TDR");
   SetTDRStyle(tdrStyle);
   gROOT->ForceStyle();
+  ////////////////////////////////////////////////////////////
 
   TString outdir = Form("output/%s/scalefactor/%s/%s", lepton.Data(), region.Data(), id.Data());
-
+  ofstream outtext(Form("%s/idresults.txt",outdir.Data()));
+  outtext << lepton.Data() << " " << id.Data() <<  " ID Results [" << region.Data() << "]" << std::endl;
+  outtext << "-----------------------------------------" << std::endl << std::endl;
+    
   TFile * datafile1 = TFile::Open( Form("output/%s/Data/%s/%s/data-efficiency%s.root", lepton.Data(), region.Data(), id.Data(), shape1.Data()) );
   TH1D  * datahist1 = (TH1D*)datafile1->Get("effhist");
   datahist1->SetTitle(Form("%s Efficiency [%s - %s ID] vs %s p_{T}", lepton.Data(), region.Data(), id.Data(), lepton.Data() ));
@@ -25,11 +32,25 @@ void idScaleFactors(TString lepton, TString region, TString id, TString shape1, 
   mchist->SetTitle("");
   mchist->SetStats(0);
 
+  ////////////// record results in text file /////////////
+
+  outtext << "ID Efficiencies" << std::endl;
+  for (int i = 1; i <= datahist1->GetNbinsX(); i++) {
+    outtext << "pT bin: " << datahist1->GetXaxis()->GetBinLowEdge(i) << " - "   << datahist1->GetXaxis()->GetBinUpEdge(i) << std::endl;
+
+    outtext << "MC Cut-n-Count:     " << mchist->GetBinContent(i)    << " +/- " << mchist->GetBinError(i)    << std::endl;
+    outtext << "Nomimal Data Model: " << datahist1->GetBinContent(i) << " +/- " << datahist1->GetBinError(i) << std::endl;
+    outtext << " Second Data Model: " << datahist2->GetBinContent(i) << " +/- " << datahist2->GetBinError(i) << std::endl << std::endl;
+  }
+  outtext << "-----------------------------------------" << std::endl << std::endl;
+
   TCanvas * canvas = new TCanvas();
   canvas->cd();
+
+  // Draw main stacks
   
-  TPad * stackpad  = new TPad("stackpad","", 0, 0.3, 1.0, 0.95);
-  stackpad->SetBottomMargin(0); // Upper and lower plot are joined  
+  TPad * stackpad  = new TPad("stackpad","", 0, 0.3, 1.0, 0.98);
+  stackpad->SetBottomMargin(0.015); // Upper and lower plot are joined  
 
   TLegend * leg = new TLegend(0.482,0.2,0.825,0.42);
   leg->SetBorderSize(4);
@@ -41,7 +62,7 @@ void idScaleFactors(TString lepton, TString region, TString id, TString shape1, 
   stackpad->SetGridy();
   stackpad->SetGridx();
 
-  datahist1->SetMaximum(0.97);
+  datahist1->SetMaximum(1.01);
 
   datahist1->SetLineColor(kRed);
   datahist1->SetMarkerColor(kRed);
@@ -68,13 +89,15 @@ void idScaleFactors(TString lepton, TString region, TString id, TString shape1, 
 
   canvas->cd();
 
-  TPad * ratiopad = new TPad("ratiopad", "", 0, 0.05, 1.0, 0.3);
+  // draw data/mc
+
+  TPad * ratiopad = new TPad("ratiopad", "", 0, 0.18, 1.0, 0.3);
   ratiopad->Draw();
   ratiopad->cd();
   ratiopad->SetLogx();
   ratiopad->SetGridx();
-  ratiopad->SetTopMargin(0);
-  ratiopad->SetBottomMargin(0.2);
+  ratiopad->SetTopMargin(0.05);
+  ratiopad->SetBottomMargin(0.1);
 
   TH1D* datahist1c = (TH1D*)datahist1->Clone();
   datahist1c->SetMaximum(1.1);
@@ -82,13 +105,13 @@ void idScaleFactors(TString lepton, TString region, TString id, TString shape1, 
 
   datahist1c->Divide(mchist);
   datahist1c->GetYaxis()->SetTitle("SF");
-  datahist1c->GetYaxis()->SetNdivisions(505);
-  datahist1c->GetXaxis()->SetLabelSize(0.11);
-  datahist1c->GetXaxis()->SetTitleSize(0.09);
+  datahist1c->GetYaxis()->SetNdivisions(304);
+  datahist1c->GetXaxis()->SetLabelSize(0.);
+  datahist1c->GetXaxis()->SetTitleSize(0.);
   datahist1c->GetXaxis()->SetTickSize(0.11);
-  datahist1c->GetYaxis()->SetLabelSize(0.11);
-  datahist1c->GetYaxis()->SetTitleSize(0.15);
-  datahist1c->GetYaxis()->SetTitleOffset(0.4); 
+  datahist1c->GetYaxis()->SetLabelSize(0.22);
+  datahist1c->GetYaxis()->SetTitleSize(0.33);
+  datahist1c->GetYaxis()->SetTitleOffset(0.16); 
 
   datahist1c->Draw("EP");  
 
@@ -96,19 +119,60 @@ void idScaleFactors(TString lepton, TString region, TString id, TString shape1, 
   datahist2c->Divide(mchist);
   datahist2c->Draw("EP SAME");  
 
-  canvas->cd();
-  CMSLumi(canvas, 0);
+  // save sfs
 
-  canvas->SaveAs(Form("%s/overplot.png",outdir.Data()));
+  outtext << "Scale Factors" << std::endl;
+  for (int i = 1; i <= datahist1c->GetNbinsX(); i++) {
+    outtext << "pT bin: " << datahist1c->GetXaxis()->GetBinLowEdge(i) << " - "   << datahist1c->GetXaxis()->GetBinUpEdge(i) << std::endl;
 
+    outtext << "Nomimal Data Model: " << datahist1c->GetBinContent(i) << " +/- " << datahist1c->GetBinError(i) << std::endl;
+    outtext << " Second Data Model: " << datahist2c->GetBinContent(i) << " +/- " << datahist2c->GetBinError(i) << std::endl;
+  }
+  outtext << "-----------------------------------------" << std::endl << std::endl;
+
+  // draw systematics
   // for output, only care about one SF + systematics
-
-  TFile * outfile = new TFile( Form("output/%s/scalefactor/%s/%s/scalefactors.root", lepton.Data(), region.Data(), id.Data() ), "RECREATE");
   
+  canvas->cd();
+
+  TPad * systmpad = new TPad("systmpad", "", 0, 0.02, 1.0, 0.18);
+  systmpad->Draw();
+  systmpad->cd();
+  systmpad->SetLogx();
+  systmpad->SetGridx();
+  systmpad->SetTopMargin(0);
+  systmpad->SetBottomMargin(0.3);
+
   TH1D * systematics     = (TH1D*)datahist1->Clone();
   TH1D * systematics_sub = (TH1D*)datahist2->Clone();
   
   systematics->Add(systematics_sub,-1.);
+
+  systematics->Divide(mchist);
+  systematics->GetYaxis()->SetTitle("Sys Unc");
+  systematics->GetYaxis()->SetNdivisions(304);
+  systematics->GetXaxis()->SetLabelSize(0.2);
+  systematics->GetXaxis()->SetTitleSize(0.2);
+  systematics->GetXaxis()->SetTickSize(0.11);
+  systematics->GetYaxis()->SetLabelSize(0.18);
+  systematics->GetYaxis()->SetTitleSize(0.23);
+  systematics->GetYaxis()->SetTitleOffset(0.22); 
+
+  systematics->Draw("EP");
+
+  outtext << "Systematic Uncertainty" << std::endl;
+  for (int i = 1; i <= datahist1c->GetNbinsX(); i++) {
+    outtext << "pT bin: " << datahist1c->GetXaxis()->GetBinLowEdge(i) << " - " << datahist1c->GetXaxis()->GetBinUpEdge(i) << " : "  << systematics->GetBinContent(i) << " +/- " << systematics->GetBinError(i) << std::endl;
+  }
+  outtext.close();
+
+  canvas->cd();
+  CMSLumi(canvas, 0);
+  canvas->SaveAs(Form("%s/overplot.png",outdir.Data()));
+
+  // now just save the SF plot with errors from systematics included
+  
+  TFile * outfile = new TFile(Form("%s/scalefactors.root",outdir.Data()), "RECREATE");
   
   // now set bin erros on datahist1c (i.e. data/MC for model template) to be stat + sys in quad
   
@@ -122,9 +186,8 @@ void idScaleFactors(TString lepton, TString region, TString id, TString shape1, 
   datahist1c->SetTitle("SF vs Lepton p_{T}");
   outfile->cd();
   datahist1c->Write();
-  outfile->Close();
-  
 
+  outfile->Close();
 }
 
 void CMSLumi(TCanvas *& canv, const Int_t iPosX) { // borrowed from margaret
@@ -143,7 +206,7 @@ void CMSLumi(TCanvas *& canv, const Int_t iPosX) { // borrowed from margaret
   // in unit of the top margin size
   Double_t lumiTextSize     = 0.6;
   Double_t lumiTextOffset   = 0.2;
-  Double_t cmsTextSize      = 0.05;
+  Double_t cmsTextSize      = 0.75;
   Double_t cmsTextOffset    = 0.1;  // only used in outOfFrame version
 
   Double_t relPosX    = 0.045;
@@ -151,7 +214,7 @@ void CMSLumi(TCanvas *& canv, const Int_t iPosX) { // borrowed from margaret
   Double_t relExtraDY = 1.2;
  
   // ratio of "CMS" and extra text size
-  Double_t extraOverCmsTextSize  = 0.4;
+  Double_t extraOverCmsTextSize  = 0.76;
  
   Bool_t outOfFrame    = false;
   if ( iPosX/10 == 0 ) {
@@ -191,7 +254,7 @@ void CMSLumi(TCanvas *& canv, const Int_t iPosX) { // borrowed from margaret
     latex.SetTextFont(cmsTextFont);
     latex.SetTextAlign(11); 
     latex.SetTextSize(cmsTextSize*t);    
-    latex.DrawLatex(l,0.98,cmsText);
+    latex.DrawLatex(l,1-t+cmsTextOffset*t,cmsText);
   }
   
   Double_t posX_;

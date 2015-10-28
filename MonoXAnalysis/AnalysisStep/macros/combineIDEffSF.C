@@ -40,6 +40,59 @@ void combineIDEffSF(){
 
   //////////////////////////////////////
 
+  // make 2D histograms -- not ideal at the moment with the by hand but whatever
+  
+  double ptbins[] = {10.,20.,30.,40.,50.,70.,100.,1000.};
+  double muetabins[] = {0.,1.2,2.5};
+  double eletabins[] = {0.,1.4442,1.556,2.5};
+
+  TH2D * muloose = new TH2D("muon_loose_SF","Moun Loose ID Scale Factors",7,ptbins,2,muetabins);
+  for (int i = 1; i <= muloose->GetNbinsX(); i++) {
+    //barrel
+    muloose->SetBinContent(i,1,sfhist1->GetBinContent(i));
+    muloose->SetBinError(i,1,sfhist1->GetBinError(i));
+
+    //endcap
+    muloose->SetBinContent(i,2,sfhist3->GetBinContent(i));
+    muloose->SetBinError(i,2,sfhist3->GetBinError(i));
+  }
+
+  TH2D * mutight = new TH2D("muon_tight_SF","Moun Tight ID Scale Factors",7,ptbins,2,muetabins);
+  for (int i = 1; i <= mutight->GetNbinsX(); i++) {
+    //barrel
+    mutight->SetBinContent(i,1,sfhist2->GetBinContent(i));
+    mutight->SetBinError(i,1,sfhist2->GetBinError(i));
+
+    //endcap
+    mutight->SetBinContent(i,2,sfhist4->GetBinContent(i));
+    mutight->SetBinError(i,2,sfhist4->GetBinError(i));
+  }
+
+  TH2D * elveto = new TH2D("electron_veto_SF","Electron Veto ID Scale Factors",7,ptbins,3,eletabins);
+  for (int i = 1; i <= elveto->GetNbinsX(); i++) {
+    //barrel
+    elveto->SetBinContent(i,1,sfhist5->GetBinContent(i));
+    elveto->SetBinError(i,1,sfhist5->GetBinError(i));
+
+    //endcap
+    elveto->SetBinContent(i,3,sfhist7->GetBinContent(i));
+    elveto->SetBinError(i,3,sfhist7->GetBinError(i));
+  }
+
+  TH2D * eltight = new TH2D("electron_tight_SF","Electron Tight ID Scale Factors",7,ptbins,3,eletabins);
+  for (int i = 1; i <= eltight->GetNbinsX(); i++) {
+    //barrel
+
+    eltight->SetBinContent(i,1,sfhist6->GetBinContent(i));
+    eltight->SetBinError(i,1,sfhist6->GetBinError(i));
+
+    //endcap
+    eltight->SetBinContent(i,3,sfhist8->GetBinContent(i));
+    eltight->SetBinError(i,3,sfhist8->GetBinError(i));
+  }
+
+  /////////////////////////////////////
+
   TFile * outfile  = new TFile("output/leptonIDsfs.root","RECREATE");
   outfile->cd();
   sfhist1->Write();
@@ -50,6 +103,11 @@ void combineIDEffSF(){
   sfhist6->Write();
   sfhist7->Write();
   sfhist8->Write();
+
+  muloose->Write();
+  mutight->Write();
+  elveto ->Write();
+  eltight->Write();
 
   outfile->Close();
 }

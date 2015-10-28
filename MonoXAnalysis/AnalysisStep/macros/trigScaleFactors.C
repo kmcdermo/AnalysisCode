@@ -1,3 +1,5 @@
+#incldue <fstream>
+
 void SetTDRStyle(TStyle *& style);
 void CMSLumi(TCanvas *& canv, const Int_t iPosX);
 
@@ -51,8 +53,6 @@ void trigScaleFactors(){
   TH1D * trigeff_elend1 = (TH1D*)elinfile->Get("trigeff_elend1"); // HLT_Ele23_CaloIdL_TrackIdL_IsoVL -- Endcap Data 
   TH1D * trigeff_elend2 = (TH1D*)elinfile->Get("trigeff_elend2"); // HLT_Ele27_WP85_Gsf -- Endcap Data
 
-  ///////////////
-
   makecanvas(trigeff_mcmubar1,trigeff_mubar1,"muon","barrel","hltmu20");
   makecanvas(trigeff_mcmubar2,trigeff_mubar2,"muon","barrel","hlttkmu20");
   makecanvas(trigeff_mcmuend1,trigeff_muend1,"muon","endcap","hltmu20");
@@ -62,16 +62,17 @@ void trigScaleFactors(){
   makecanvas(trigeff_mcelbar2,trigeff_elbar2,"electron","barrel","hltel27");
   makecanvas(trigeff_mcelend1,trigeff_elend1,"electron","endcap","hltel23");
   makecanvas(trigeff_mcelend2,trigeff_elend2,"electron","endcap","hltel27");
+
 }
 
 void makecanvas(TH1D*& mchist, TH1D*& datahist, const TString lepton, const TString region, const TString trig){
   TCanvas * canvas = new TCanvas();
   canvas->cd();
   
-  TPad * stackpad  = new TPad("stackpad","", 0, 0.3, 1.0, 0.95);
-  stackpad->SetBottomMargin(0); // Upper and lower plot are joined  
+  TPad * stackpad  = new TPad("stackpad","", 0, 0.3, 1.0, 0.98);
+  stackpad->SetBottomMargin(0.02); // Upper and lower plot are joined  
 
-  TLegend * leg = new TLegend(0.482,0.2,0.825,0.42);
+  TLegend * leg = new TLegend(0.6,0.2,0.825,0.36);
   leg->SetBorderSize(4);
   leg->SetLineColor(kBlack);
   stackpad->Draw();
@@ -81,7 +82,11 @@ void makecanvas(TH1D*& mchist, TH1D*& datahist, const TString lepton, const TStr
   stackpad->SetGridy();
   stackpad->SetGridx();
 
+  TString hltname = datahist->GetTitle();
+
+  datahist->SetTitle("");
   datahist->SetTitle(Form("%s Trigger Efficiency (%s %s)",trig.Data(), lepton.Data(), region.Data()));
+  datahist->GetYaxis()->SetTitle("Efficiency");
   datahist->SetLineColor(kRed);
   datahist->SetMarkerColor(kRed);
   leg->AddEntry(datahist,Form("Single %s Data",lepton.Data()),"ep1");
@@ -107,7 +112,7 @@ void makecanvas(TH1D*& mchist, TH1D*& datahist, const TString lepton, const TStr
   ratiopad->cd();
   ratiopad->SetLogx();
   ratiopad->SetGridx();
-  ratiopad->SetTopMargin(0);
+  ratiopad->SetTopMargin(0.1);
   ratiopad->SetBottomMargin(0.2);
 
   TH1D* datahistc = (TH1D*)datahist->Clone();
@@ -116,7 +121,8 @@ void makecanvas(TH1D*& mchist, TH1D*& datahist, const TString lepton, const TStr
   datahistc->SetMinimum(0.9);
 
   datahistc->Divide(mchist);
-  datahistc->GetYaxis()->SetTitle("SF");
+  datahistc->GetYaxis()->SetTitle("Data/MC");
+  datahistc->GetXaxis()->SetTitle("Probe p_{T} (GeV/c)");
   datahistc->GetYaxis()->SetNdivisions(505);
   datahistc->GetXaxis()->SetLabelSize(0.11);
   datahistc->GetXaxis()->SetTitleSize(0.09);
@@ -130,11 +136,43 @@ void makecanvas(TH1D*& mchist, TH1D*& datahist, const TString lepton, const TStr
   canvas->cd();
   CMSLumi(canvas, 0);
 
-  canvas->SaveAs( Form("output_trig/%s/scalefactor/%s/%s/overplot.png", lepton.Data(), region.Data(), trig.Data()) );
+  TString outdir = Form("output_trig/%s/scalefactor/%s/%s", lepton.Data(), region.Data(), trig.Data());
+  canvas->SaveAs( Form("%s/overplot.png", outdir.Data()) );
 
   // for output
-  TFile * outfile = new TFile( Form("output_trig/%s/scalefactor/%s/%s/scalefactors.root", lepton.Data(), region.Data(), trig.Data()) , "RECREATE");
+  TFile * outfile = new TFile( Form("%s/scalefactors.root", outdir.Data()) , "RECREATE");
   datahistc->Write();
+
+  TString dummy = " Trigger Efficiency";
+  Ssiz_t effpos = hltname.Index(dummy.Data());
+  Ssiz_t hltlen = hltname.Length();
+  hltname.Replace(effpos,hltlen-effpos,"");
+
+  // more for output 
+  ofstream outtext(Form("%s/trigresults.txt",outdir.Data()));
+  outtext << hltname.Data() <<  " Results [" << region.Data() << "]" << std::endl;
+  outtext << "-----------------------------------------" << std::endl << std::endl;
+
+  ////////////// record results in text file /////////////
+
+  outtext << "Data Trigger Efficiencies" << std::endl;
+  for (int i = 1; i <= datahist->GetNbinsX(); i++) {
+    outtext << "pT bin: " << datahist->GetXaxis()->GetBinLowEdge(i) << " - " << datahist->GetXaxis()->GetBinUpEdge(i) << " : " << datahist->GetBinContent(i) << " +/- " << datahist->GetBinError(i) << std::endl;
+  }
+  outtext << "-----------------------------------------" << std::endl << std::endl;
+
+  outtext << "MC Trigger Efficiencies" << std::endl;
+  for (int i = 1; i <= mchist->GetNbinsX(); i++) {
+    outtext << "pT bin: " << mchist->GetXaxis()->GetBinLowEdge(i) << " - " << mchist->GetXaxis()->GetBinUpEdge(i) << " : " << mchist->GetBinContent(i) << " +/- " << mchist->GetBinError(i) << std::endl;
+  }
+  outtext << "-----------------------------------------" << std::endl << std::endl;
+
+  outtext << "Scale Factors" << std::endl;
+  for (int i = 1; i <= datahistc->GetNbinsX(); i++) {
+    outtext << "pT bin: " << datahistc->GetXaxis()->GetBinLowEdge(i) << " - "   << datahistc->GetXaxis()->GetBinUpEdge(i) << " : " << datahistc->GetBinContent(i) << " +/- " << datahistc->GetBinError(i) << std::endl;
+  }
+  outtext.close();
+  /////////////////////////////////////////////////////////
 
   delete outfile;
   delete datahistc;
@@ -161,7 +199,7 @@ void CMSLumi(TCanvas *& canv, const Int_t iPosX) { // borrowed from margaret
   // in unit of the top margin size
   Double_t lumiTextSize     = 0.6;
   Double_t lumiTextOffset   = 0.2;
-  Double_t cmsTextSize      = 0.05;
+  Double_t cmsTextSize      = 0.75;
   Double_t cmsTextOffset    = 0.1;  // only used in outOfFrame version
 
   Double_t relPosX    = 0.045;
@@ -169,7 +207,7 @@ void CMSLumi(TCanvas *& canv, const Int_t iPosX) { // borrowed from margaret
   Double_t relExtraDY = 1.2;
  
   // ratio of "CMS" and extra text size
-  Double_t extraOverCmsTextSize  = 0.4;
+  Double_t extraOverCmsTextSize  = 0.76;
  
   Bool_t outOfFrame    = false;
   if ( iPosX/10 == 0 ) {
@@ -209,7 +247,7 @@ void CMSLumi(TCanvas *& canv, const Int_t iPosX) { // borrowed from margaret
     latex.SetTextFont(cmsTextFont);
     latex.SetTextAlign(11); 
     latex.SetTextSize(cmsTextSize*t);    
-    latex.DrawLatex(l,0.98,cmsText);
+    latex.DrawLatex(l,1-t+cmsTextOffset*t,cmsText);
   }
   
   Double_t posX_;

@@ -32,18 +32,18 @@ void trigEff_data(){
   ////////////////////////////
 
   // Muon plots
-  TH1D *  trigeff_mubar1 = new TH1D("trigeff_mubar1","HLT_IsoMu20 Trigger Effiency (Data Barrel)",   27, muptbins);
-  TH1D *  trigeff_mubar2 = new TH1D("trigeff_mubar2","HLT_IsoTkMu20 Trigger Effiency (Data Barrel)", 27, muptbins);
+  TH1D *  trigeff_mubar1 = new TH1D("trigeff_mubar1","HLT_IsoMu20 Trigger Efficiency (Data Barrel)",   27, muptbins);
+  TH1D *  trigeff_mubar2 = new TH1D("trigeff_mubar2","HLT_IsoTkMu20 Trigger Efficiency (Data Barrel)", 27, muptbins);
 
-  TH1D *  trigeff_muend1 = new TH1D("trigeff_muend1","HLT_IsoMu20 Trigger Effiency (Data Endcap)",   27, muptbins);
-  TH1D *  trigeff_muend2 = new TH1D("trigeff_muend2","HLT_IsoTkMu20 Trigger Effiency (Data Endcap)", 27, muptbins);
+  TH1D *  trigeff_muend1 = new TH1D("trigeff_muend1","HLT_IsoMu20 Trigger Efficiency (Data Endcap)",   27, muptbins);
+  TH1D *  trigeff_muend2 = new TH1D("trigeff_muend2","HLT_IsoTkMu20 Trigger Efficiency (Data Endcap)", 27, muptbins);
 
   // Electron plots
-  TH1D *  trigeff_elbar1 = new TH1D("trigeff_elbar1","HLT_Ele23_WPLoose_Gsf Trigger Effiency (Data Barrel)", 24, elptbins23);
-  TH1D *  trigeff_elbar2 = new TH1D("trigeff_elbar2","HLT_Ele27_WPLoose_Gsf Trigger Effiency (Data Barrel)", 24, elptbins27);
+  TH1D *  trigeff_elbar1 = new TH1D("trigeff_elbar1","HLT_Ele23_WPLoose_Gsf Trigger Efficiency (Data Barrel)", 24, elptbins23);
+  TH1D *  trigeff_elbar2 = new TH1D("trigeff_elbar2","HLT_Ele27_WPLoose_Gsf Trigger Efficiency (Data Barrel)", 24, elptbins27);
 
-  TH1D *  trigeff_elend1 = new TH1D("trigeff_elend1","HLT_Ele23_WPLoose_Gsf Trigger Effiency (Data Endcap)", 24, elptbins23);
-  TH1D *  trigeff_elend2 = new TH1D("trigeff_elend2","HLT_Ele27_WPLoose_Gsf Trigger Effiency (Data Endcap)", 24, elptbins27);
+  TH1D *  trigeff_elend1 = new TH1D("trigeff_elend1","HLT_Ele23_WPLoose_Gsf Trigger Efficiency (Data Endcap)", 24, elptbins23);
+  TH1D *  trigeff_elend2 = new TH1D("trigeff_elend2","HLT_Ele27_WPLoose_Gsf Trigger Efficiency (Data Endcap)", 24, elptbins27);
 
   for (int i = 0; i < 27; i++){ // Muons first
     // Muon Barrel 

@@ -38,18 +38,18 @@ void trigEff_mc(){
   ////////////////////////////
 
   // Muon plots
-  TH1D *  trigeff_mcmubar1 = new TH1D("trigeff_mcmubar1","HLT_IsoMu20 Trigger Effiency (MC Barrel)",   27, muptbins);
-  TH1D *  trigeff_mcmubar2 = new TH1D("trigeff_mcmubar2","HLT_IsoTkMu20 Trigger Effiency (MC Barrel)", 27, muptbins);
+  TH1D *  trigeff_mcmubar1 = new TH1D("trigeff_mcmubar1","HLT_IsoMu20 Trigger Efficiency (MC Barrel)",   27, muptbins);
+  TH1D *  trigeff_mcmubar2 = new TH1D("trigeff_mcmubar2","HLT_IsoTkMu20 Trigger Efficiency (MC Barrel)", 27, muptbins);
   
-  TH1D *  trigeff_mcmuend1 = new TH1D("trigeff_mcmuend1","HLT_IsoMu20 Trigger Effiency (MC Endcap)",   27, muptbins);
-  TH1D *  trigeff_mcmuend2 = new TH1D("trigeff_mcmuend2","HLT_IsoTkMu20 Trigger Effiency (MC Endcap)", 27, muptbins);
+  TH1D *  trigeff_mcmuend1 = new TH1D("trigeff_mcmuend1","HLT_IsoMu20 Trigger Efficiency (MC Endcap)",   27, muptbins);
+  TH1D *  trigeff_mcmuend2 = new TH1D("trigeff_mcmuend2","HLT_IsoTkMu20 Trigger Efficiency (MC Endcap)", 27, muptbins);
 
   // Electron plots
-  TH1D *  trigeff_mcelbar1 = new TH1D("trigeff_mcelbar1","HLT_Ele23_CaloIdL_TrackIdL_IsoVL Trigger Effiency (MC Barrel)", 24, elptbins23);
-  TH1D *  trigeff_mcelbar2 = new TH1D("trigeff_mcelbar2","HLT_Ele27_WP85_Gsf Trigger Effiency (MC Barrel)",               24, elptbins27);
+  TH1D *  trigeff_mcelbar1 = new TH1D("trigeff_mcelbar1","HLT_Ele23_CaloIdL_TrackIdL_IsoVL Trigger Efficiency (MC Barrel)", 24, elptbins23);
+  TH1D *  trigeff_mcelbar2 = new TH1D("trigeff_mcelbar2","HLT_Ele27_WP85_Gsf Trigger Efficiency (MC Barrel)",               24, elptbins27);
 
-  TH1D *  trigeff_mcelend1 = new TH1D("trigeff_mcelend1","HLT_Ele23_CaloIdL_TrackIdL_IsoVL Trigger Effiency (MC Endcap)", 24, elptbins23);
-  TH1D *  trigeff_mcelend2 = new TH1D("trigeff_mcelend2","HLT_Ele27_WP85_Gsf Trigger Effiency (MC Endcap)",               24, elptbins27);
+  TH1D *  trigeff_mcelend1 = new TH1D("trigeff_mcelend1","HLT_Ele23_CaloIdL_TrackIdL_IsoVL Trigger Efficiency (MC Endcap)", 24, elptbins23);
+  TH1D *  trigeff_mcelend2 = new TH1D("trigeff_mcelend2","HLT_Ele27_WP85_Gsf Trigger Efficiency (MC Endcap)",               24, elptbins27);
 
   for (int i = 0; i < 27; i++){ // Muons first
     // Muon Barrel 
