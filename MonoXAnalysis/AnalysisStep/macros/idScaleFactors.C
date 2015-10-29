@@ -188,6 +188,47 @@ void idScaleFactors(TString lepton, TString region, TString id, TString shape1, 
   datahist1c->Write();
 
   outfile->Close();
+
+  TString etaregion = "";
+  if (lepton.Contains("muon",TString::kExact)){
+    if (region.Contains("barrel",TString::kExact)){
+      etaregion = "$|\eta| < 1.2$";
+    }
+    else if (region.Contains("endcap",TString::kExact)){
+      etaregion = "$1.2 < |\eta| < 2.5$";
+    }
+  }
+  else if (lepton.Contains("electron",TString::kExact)){
+    if (region.Contains("barrel",TString::kExact)){
+      etaregion = "$|\eta| < 1.4442$";
+    }
+    else if (region.Contains("endcap",TString::kExact)){
+      etaregion = "$1.566 < |\eta| < 2.5$";
+    }
+  }
+
+  // make output for TeX tables
+  ofstream table(Form("%s/table.txt",outdir.Data()));
+  table << "\\begin{table}[h!]" << std::endl;
+  table << "\\begin{center}"    << std::endl;
+  table << "{\\small"           << std::endl;
+  table << "\\begin{tabular}{|l|c|c|c|c|} \\hline" << std::endl;
+  table << "$\\pt$ bin & MC Efficiency & Data Model 1 Efficiency & Data Model 2 Efficiency & Scale Factor \\\\ \\hline " << std::endl;
+  for (int i = 1; i <= datahist1c->GetNbinsX(); i++) {
+    table << datahist1c->GetXaxis()->GetBinLowEdge(i) << "-" << datahist1c->GetXaxis()->GetBinUpEdge(i) << "\\GeV &" 
+	  << mchist    ->GetBinContent(i) << "$\\pm$" << mchist    ->GetBinError(i) << " & " 
+	  << datahist1 ->GetBinContent(i) << "$\\pm$" << datahist1 ->GetBinError(i) << " & " 
+	  << datahist2 ->GetBinContent(i) << "$\\pm$" << datahist1 ->GetBinError(i) << " & " 
+	  << datahist1c->GetBinContent(i) << "$\\pm$" << datahist1c->GetBinError(i) << "\\\\ \\hline"
+	  << std::endl;
+  }
+  table << "\\end{tabular}" << std::endl;
+  table << "}" << std::endl;
+  table << "\\label{tab:" << lepton.Data() << id.Data() << region.Data() << "}" << std::endl;
+  table << "\\caption{" << lepton.Data() << " " << id.Data() << " ID Results (" << etaregion.Data() << ")}" << std::endl;
+  table << "\\end{center}" << std::endl;
+  table << "\\end{table}"  << std::endl;
+  table.close();
 }
 
 void CMSLumi(TCanvas *& canv, const Int_t iPosX) { // borrowed from margaret

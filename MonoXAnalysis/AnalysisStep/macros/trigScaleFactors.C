@@ -84,7 +84,8 @@ void makecanvas(TH1D*& mchist, TH1D*& datahist, const TString lepton, const TStr
 
   TString hltname = datahist->GetTitle();
 
-  datahist->SetTitle("");
+  //  datahist->SetTitle("");
+  datahist->SetMaximum(1.01);
   datahist->SetTitle(Form("%s Trigger Efficiency (%s %s)",trig.Data(), lepton.Data(), region.Data()));
   datahist->GetYaxis()->SetTitle("Efficiency");
   datahist->SetLineColor(kRed);
@@ -173,6 +174,49 @@ void makecanvas(TH1D*& mchist, TH1D*& datahist, const TString lepton, const TStr
   }
   outtext.close();
   /////////////////////////////////////////////////////////
+
+  //////////// record results in TeX table friendly manner //////////////////////
+
+  TString etaregion = "";
+  if (lepton.Contains("muon",TString::kExact)){
+    if (region.Contains("barrel",TString::kExact)){
+      etaregion = "$|\\eta| < 1.2$";
+    }
+    else if (region.Contains("endcap",TString::kExact)){
+      etaregion = "$1.2 < |\\eta| < 2.5$";
+    }
+  }
+  else if (lepton.Contains("electron",TString::kExact)){
+    if (region.Contains("barrel",TString::kExact)){
+      etaregion = "$|\\eta| < 1.4442$";
+    }
+    else if (region.Contains("endcap",TString::kExact)){
+      etaregion = "$1.566 < |\\eta| < 2.5$";
+    }
+  }
+
+  // make output for TeX tables
+  ofstream table(Form("%s/table.txt",outdir.Data()));
+  table << "\\begin{table}[h!]" << std::endl;
+  table << "\\begin{center}"    << std::endl;
+  table << "{\\small"           << std::endl;
+  table << "\\begin{tabular}{|l|c|c|c|} \\hline" << std::endl;
+  table << "$\\pt$ bin & MC Efficiency & Data Efficiency & Scale Factor \\\\ \\hline " << std::endl;
+  for (int i = 1; i <= datahistc->GetNbinsX(); i++) {
+    table << datahistc->GetXaxis()->GetBinLowEdge(i) << "-" << datahistc->GetXaxis()->GetBinUpEdge(i) << "\\GeV &" 
+	  << mchist   ->GetBinContent(i) << "$\\pm$" << mchist   ->GetBinError(i) << " & " 
+	  << datahist ->GetBinContent(i) << "$\\pm$" << datahist ->GetBinError(i) << " & " 
+	  << datahistc->GetBinContent(i) << "$\\pm$" << datahistc->GetBinError(i) << "\\\\ \\hline"
+	  << std::endl;
+  }
+  table << "\\end{tabular}" << std::endl;
+  table << "}" << std::endl;
+  table << "\\label{tab:" << lepton.Data() << trig.Data() << region.Data() << "}" << std::endl;
+  table << "\\caption{" << hltname.Data() << " Trigger Efficiency Results (" << etaregion.Data() << ")}" << std::endl;
+  table << "\\end{center}" << std::endl;
+  table << "\\end{table}"  << std::endl;
+  table.close();
+  //////////////////////////////////////////////////////////////////////////////////////
 
   delete outfile;
   delete datahistc;
