@@ -195,6 +195,10 @@ void makecanvas(TH1D*& mchist, TH1D*& datahist, const TString lepton, const TStr
     }
   }
 
+  RooRealVar *mcvar = new RooRealVar("mcvar","mcvar",0.);
+  RooRealVar *datavar = new RooRealVar("datavar","datavar",0.);
+  RooRealVar *sfvar = new RooRealVar("sfvar","sfvar",0.);
+
   // make output for TeX tables
   ofstream table(Form("%s/table.txt",outdir.Data()));
   table << "\\begin{table}[h!]" << std::endl;
@@ -203,10 +207,18 @@ void makecanvas(TH1D*& mchist, TH1D*& datahist, const TString lepton, const TStr
   table << "\\begin{tabular}{|l|c|c|c|} \\hline" << std::endl;
   table << "$\\pt$ bin & MC Efficiency & Data Efficiency & Scale Factor \\\\ \\hline " << std::endl;
   for (int i = 1; i <= datahistc->GetNbinsX(); i++) {
+    // set values in roofit
+    mcvar->setVal(mchist->GetBinContent(i));
+    mcvar->setError(mchist->GetBinError(i));
+    datavar->setVal(datahist->GetBinContent(i));
+    datavar->setError(datahist->GetBinError(i));
+    sfvar->setVal(datahistc->GetBinContent(i));
+    sfvar->setError(datahistc->GetBinError(i));
+
     table << datahistc->GetXaxis()->GetBinLowEdge(i) << "-" << datahistc->GetXaxis()->GetBinUpEdge(i) << "\\GeV &" 
-	  << mchist   ->GetBinContent(i) << "$\\pm$" << mchist   ->GetBinError(i) << " & " 
-	  << datahist ->GetBinContent(i) << "$\\pm$" << datahist ->GetBinError(i) << " & " 
-	  << datahistc->GetBinContent(i) << "$\\pm$" << datahistc->GetBinError(i) << "\\\\ \\hline"
+	  << *(mcvar->format(2,"EXPF")) << " & " 
+	  << *(datavar->format(2,"EXPF")) << " & " 
+	  << *(sfvar->format(2,"EXPF")) << " & "  << "\\\\ \\hline"
 	  << std::endl;
   }
   table << "\\end{tabular}" << std::endl;
