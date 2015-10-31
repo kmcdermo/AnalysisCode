@@ -172,6 +172,7 @@ void idScaleFactors(TString lepton, TString region, TString id, TString shape1, 
   canvas->cd();
   CMSLumi(canvas, 0);
   canvas->SaveAs(Form("%s/overplot.png",outdir.Data()));
+  canvas->SaveAs(Form("%s/overplot.pdf",outdir.Data()));
 
   // now just save the SF plot with errors from systematics included
   
@@ -239,7 +240,7 @@ void idScaleFactors(TString lepton, TString region, TString id, TString shape1, 
 	  << *(mcvar->format(2,"EXPF")) << " & " 
 	  << *(datavar1->format(2,"EXPF")) << " & " 
 	  << *(datavar2->format(2,"EXPF")) << " & " 
-	  << *(sfvar->format(2,"EXPF")) << " & "  << "\\\\ \\hline"
+	  << *(sfvar->format(2,"EXPF")) << "\\\\ \\hline"
 	  << std::endl;
   }
   table << "\\end{tabular}" << std::endl;

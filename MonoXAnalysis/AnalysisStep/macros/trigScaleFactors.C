@@ -139,6 +139,7 @@ void makecanvas(TH1D*& mchist, TH1D*& datahist, const TString lepton, const TStr
 
   TString outdir = Form("output_trig/%s/scalefactor/%s/%s", lepton.Data(), region.Data(), trig.Data());
   canvas->SaveAs( Form("%s/overplot.png", outdir.Data()) );
+  canvas->SaveAs( Form("%s/overplot.pdf", outdir.Data()) );
 
   // for output
   TFile * outfile = new TFile( Form("%s/scalefactors.root", outdir.Data()) , "RECREATE");
@@ -218,7 +219,7 @@ void makecanvas(TH1D*& mchist, TH1D*& datahist, const TString lepton, const TStr
     table << datahistc->GetXaxis()->GetBinLowEdge(i) << "-" << datahistc->GetXaxis()->GetBinUpEdge(i) << "\\GeV &" 
 	  << *(mcvar->format(2,"EXPF")) << " & " 
 	  << *(datavar->format(2,"EXPF")) << " & " 
-	  << *(sfvar->format(2,"EXPF")) << " & "  << "\\\\ \\hline"
+	  << *(sfvar->format(2,"EXPF")) << "\\\\ \\hline"
 	  << std::endl;
   }
   table << "\\end{tabular}" << std::endl;

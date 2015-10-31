@@ -49,6 +49,7 @@ void savecanv(TFile *& file, TString treedir, TString plot, TString outdir, TStr
     canv->SetLogy();
   }
   canv->SaveAs( Form("%s/%s%s%s.png", outdir.Data(), plot.Data(), outstring.Data(), shape.Data()) );
+  canv->SaveAs( Form("%s/%s%s%s.pdf", outdir.Data(), plot.Data(), outstring.Data(), shape.Data()) );
 
   delete canv;
 }
