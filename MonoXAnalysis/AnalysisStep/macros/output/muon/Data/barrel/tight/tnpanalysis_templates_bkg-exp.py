@@ -9,6 +9,7 @@ process.MessageLogger.destinations = ['cout', 'cerr']
 process.MessageLogger.cerr.FwkReport.reportEvery = 1000
 
 isMC     = False
+
 isMu     = True
 isBarrel = True
 idtype   = "tight"
@@ -159,12 +160,12 @@ process.leptonIdTnP = cms.EDAnalyzer("TagProbeFitTreeAnalyzer",
          pdfSignalPlusBackgroundb5 = cms.vstring(
              "#import "+TemplateDir+"templates5.root:w:signalPassMC",
              "#import "+TemplateDir+"templates5.root:w:signalFailMC",
-             "Gaussian::signalPassSmear(mass, mP[0., -3, 3.], sp[1.0, 0.0, 3.0])",
-             "Gaussian::signalFailSmear(mass, mF[0., -3, 3.], sF[1.0, 0.0, 3.0])",
+             "Gaussian::signalPassSmear(mass, mP[0.16, -1., 3.], sp[0.5, 0.0, 3.0])",
+             "Gaussian::signalFailSmear(mass, mF[0.30, -1., 3.], sF[1.5, 0.0, 3.0])",
              "FCONV::signalPass(mass, signalPassMC, signalPassSmear)",
              "FCONV::signalFail(mass, signalFailMC, signalFailSmear)",
-             "Exponential::backgroundPass(mass, cP[-1.0, -2.0, 2.0])",
-             "Exponential::backgroundFail(mass, cF[-1.0, -2.0, 2.0])",
+             "Exponential::backgroundPass(mass, cP[0.02, -2.0, 2.0])",
+             "Exponential::backgroundFail(mass, cF[0.02, -2.0, 2.0])",
              "efficiency[0.8,0,1]"
           ),
          pdfSignalPlusBackgroundb6 = cms.vstring(
@@ -174,8 +175,8 @@ process.leptonIdTnP = cms.EDAnalyzer("TagProbeFitTreeAnalyzer",
              "Gaussian::signalFailSmear(mass, mF[0., -3, 3.], sF[1.0, 0.0, 3.0])",
              "FCONV::signalPass(mass, signalPassMC, signalPassSmear)",
              "FCONV::signalFail(mass, signalFailMC, signalFailSmear)",
-             "Exponential::backgroundPass(mass, cP[-1.0, -2.0, 2.0])",
-             "Exponential::backgroundFail(mass, cF[-1.0, -2.0, 2.0])",
+             "Exponential::backgroundPass(mass, cP[0.1, -2.0, 2.0])",
+             "Exponential::backgroundFail(mass, cF[0.1, -2.0, 2.0])",
              "efficiency[0.8,0,1]"
           ),
         ),

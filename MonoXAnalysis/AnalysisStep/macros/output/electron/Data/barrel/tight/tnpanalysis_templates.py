@@ -31,7 +31,7 @@ else :
         InputFileName = "../input/2015D/mcDYLL/tnptree.root"
         InputDirName  = "electrontnptree"
     else : 
-        InputFileName = "../input/2015D/singleEl/tnptree_copy.root"
+        InputFileName = "../input/2015D/singleEl/tnptree.root"
         InputDirName  = "electrontnptree"
         if isBarrel :
             TemplateDir = "output/electron/Data/barrel/"+idtype+"/"
@@ -139,12 +139,12 @@ process.leptonIdTnP = cms.EDAnalyzer("TagProbeFitTreeAnalyzer",
          pdfSignalPlusBackgroundb3 = cms.vstring(
              "#import "+TemplateDir+"templates3.root:w:signalPassMC",
              "#import "+TemplateDir+"templates3.root:w:signalFailMC",
-             "Gaussian::signalPassSmear(mass, mP[0., -1, 1.], sp[0.1, 0.0, 2.0])",
-             "Gaussian::signalFailSmear(mass, mF[0., -1, 1.], sF[0.1, 0.0, 2.0])",
+             "Gaussian::signalPassSmear(mass, mP[0.15, -1, 1.], sp[0.8, 0.0, 2.0])",
+             "Gaussian::signalFailSmear(mass, mF[0.15, -1, 1.], sF[0.9, 0.0, 2.0])",
              "FCONV::signalPass(mass, signalPassMC, signalPassSmear)",
              "FCONV::signalFail(mass, signalFailMC, signalFailSmear)",
-             "RooCMSShape::backgroundPass(mass, alphaPass[90.,80.,100.], betaPass[0.105, 0. ,1.0], gammaPass[0.1, 0.05, 0.2], peakPass[91.2, 90, 92])",
-             "RooCMSShape::backgroundFail(mass, alphaFail[140.,130.,150.], betaFail[0.105, 0. ,0.5], gammaFail[0.1, 0.05, 0.2], peakFail[91.2, 90, 92])",
+             "RooCMSShape::backgroundPass(mass, alphaPass[110.,105.,115.], betaPass[-0.09, -0.2, 0.2], gammaPass[-0.05, -0.1, 0.1], peakPass[91.2, 90, 92])",
+             "RooCMSShape::backgroundFail(mass, alphaFail[145.,140.,150.], betaFail[0.03, -0.1, 0.1], gammaFail[0.08, -0.1, 0.1], peakFail[91.2, 90, 92])",
              "efficiency[0.8,0,1]"
          ),
          pdfSignalPlusBackgroundb4 = cms.vstring(

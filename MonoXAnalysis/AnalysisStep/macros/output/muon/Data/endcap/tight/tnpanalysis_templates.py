@@ -111,9 +111,10 @@ process.leptonIdTnP = cms.EDAnalyzer("TagProbeFitTreeAnalyzer",
              "Gaussian::signalFailSmear(mass, mF[0., -1, 1.], sF[0.2, 0.0, 1.0])",
              "FCONV::signalPass(mass, signalPassMC, signalPassSmear)",
              "FCONV::signalFail(mass, signalFailMC, signalFailSmear)",
-             "RooCMSShape::backgroundPass(mass, alphaPass[100.,80.,120.], betaPass[0.01, 0. ,0.1], gammaPass[0.033, 0, 0.1], peakPass[91.2, 90, 92])",
-             "RooCMSShape::backgroundFail(mass, alphaFail[120.,100.,140.], betaFail[0.01, 0. ,0.1], gammaFail[0.033, 0, 0.1], peakFail[91.2, 90, 92])",
+             "RooCMSShape::backgroundPass(mass, alphaPass[70.,60.,80.], betaPass[0.03, 0.001 ,0.1], gammaPass[0.07, 0, 0.1], peakPass[91.2, 90, 92])",
+             "RooCMSShape::backgroundFail(mass, alphaFail[100.,80.,160.], betaFail[-0.001, -0.01 ,0.01], gammaFail[0.02, 0, 0.1], peakFail[91.2, 90, 92])",
              "efficiency[0.8,0,1]"
+
          ),
          pdfSignalPlusBackgroundb1 = cms.vstring(
              "#import "+TemplateDir+"templates1.root:w:signalPassMC",

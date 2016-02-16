@@ -31,7 +31,7 @@ else :
         InputFileName = "../input/2015D/mcDYLL/tnptree.root"
         InputDirName  = "electrontnptree"
     else : 
-        InputFileName = "../input/2015D/singleEl/tnptree_copy.root"
+        InputFileName = "../input/2015D/singleEl/tnptree-copy.root"
         InputDirName  = "electrontnptree"
         if isBarrel :
             TemplateDir = "output/electron/Data/barrel/"+idtype+"/"

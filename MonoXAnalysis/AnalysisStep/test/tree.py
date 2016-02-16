@@ -63,7 +63,6 @@ process.source = cms.Source("PoolSource",
 #            '/store/mc/RunIISpring15MiniAODv2/QCD_HT100to200_TuneCUETP8M1_13TeV-madgraphMLM-pythia8/MINIAODSIM/74X_mcRun2_asymptotic_v2-v1/10000/00628FDD-AA6C-E511-9A4D-0025905B85AA.root'
             # W jets
             '/store/mc/RunIISpring15MiniAODv2/WJetsToLNu_TuneCUETP8M1_13TeV-amcatnloFXFX-pythia8/MINIAODSIM/74X_mcRun2_asymptotic_v2-v1/40000/008865AA-596D-E511-92F1-0025905A6110.root'
-
     ])
 )
 
@@ -73,9 +72,9 @@ process.TFileService = cms.Service("TFileService", fileName = cms.string("tree.r
 # Set the global tag depending on the sample type
 from Configuration.AlCa.GlobalTag import GlobalTag
 if isMC:
-    process.GlobalTag.globaltag = '74X_mcRun2_asymptotic_v2'   # for Simulation
+    process.GlobalTag.globaltag = '74X_mcRun2_asymptotic_v4'   # for Simulation
 else:
-    process.GlobalTag.globaltag = '74X_dataRun2_Prompt_v4'            # for Data --> PR v4 
+    process.GlobalTag.globaltag = '74X_dataRun2_v5'            # for Data --> PR v4 
 #    process.GlobalTag.globaltag = '74X_dataRun2_reMiniAOD_v0'            # for Data --> Oct05 rereco
 
 # Setup the private SQLite -- Ripped from PhysicsTools/PatAlgos/test/corMETFromMiniAOD.py
@@ -186,10 +185,14 @@ process.selectedObjects = cms.EDProducer("PFCleaner",
     muons = cms.InputTag("slimmedMuons"),
     electrons = cms.InputTag("slimmedElectrons"),
     photons = cms.InputTag("slimmedPhotons"),
+    rho = cms.InputTag("fixedGridRhoFastjetAll"),
     jets = cms.InputTag(jetCollName),
     electronidveto = cms.InputTag("egmGsfElectronIDs:cutBasedElectronID-Spring15-25ns-V1-standalone-veto"),
-    electronidmedium = cms.InputTag("egmGsfElectronIDs:cutBasedElectronID-Spring15-25ns-V1-standalone-medium"),
-    photonidloose = cms.InputTag("egmPhotonIDs:cutBasedPhotonID-Spring15-50ns-V1-standalone-loose")
+    electronidmedium = cms.InputTag("egmGsfElectronIDs:cutBasedElectronID-Spring15-25ns-V1-standalone-tight"),
+    photonidloose = cms.InputTag("egmPhotonIDs:cutBasedPhotonID-Spring15-50ns-V1-standalone-loose"),
+    photonsieie = cms.InputTag("photonIDValueMapProducer", "phoFull5x5SigmaIEtaIEta"),
+    photonphiso = cms.InputTag("photonIDValueMapProducer", "phoPhotonIsolation"),
+    photonchiso = cms.InputTag("photonIDValueMapProducer", "phoChargedIsolation")
 )
 
 # Define all the METs corrected for lepton/photon momenta
@@ -236,11 +239,6 @@ process.t1phmet = cms.EDProducer("CandCorrectedMETProducer",
     cands = cms.VInputTag(cms.InputTag("selectedObjects", "photons")),
 )
 
-# Quark-Gluon Discriminant
-process.load("RecoJets.JetProducers.QGTagger_cfi")
-process.QGTagger.srcJets = jetCollName
-process.QGTagger.srcVertexCollection = "goodVertices"
-
 # Make the tree 
 process.tree = cms.EDAnalyzer("MonoJetTreeMaker",
     pileup = cms.InputTag("addPileupInfo"),
@@ -253,17 +251,14 @@ process.tree = cms.EDAnalyzer("MonoJetTreeMaker",
     tightmuons = cms.InputTag("selectedObjects", "tightmuons"),
     tightelectrons = cms.InputTag("selectedObjects", "tightelectrons"),
     tightphotons = cms.InputTag("selectedObjects", "tightphotons"),
+    electronLooseId = cms.InputTag("egmGsfElectronIDs:cutBasedElectronID-Spring15-25ns-V1-standalone-loose"),
+    photonLooseId = cms.InputTag("egmPhotonIDs:cutBasedPhotonID-Spring15-50ns-V1-standalone-loose"),
     photonMediumId = cms.InputTag("egmPhotonIDs:cutBasedPhotonID-Spring15-50ns-V1-standalone-medium"),
     photonTightId = cms.InputTag("egmPhotonIDs:cutBasedPhotonID-Spring15-50ns-V1-standalone-tight"),
+    photonHighPtId = cms.InputTag("selectedObjects", "photonHighPtId"),
     taus = cms.InputTag("slimmedTaus"),
     jets = cms.InputTag(jetCollName),
-    qgl = cms.InputTag("QGTagger", "qgLikelihood"),
-    qgs2 = cms.InputTag("QGTagger", "axis2"),
-    qgmult = cms.InputTag("QGTagger", "mult"),
-    qgptd = cms.InputTag("QGTagger", "ptD"),
-    partmet = cms.InputTag("partMet"),
     t1pfmet = cms.InputTag("slimmedMETs"),
-    pfmupt = cms.InputTag("pfmupt"),
     mumet = cms.InputTag("mumet"),
     t1mumet = cms.InputTag("t1mumet"),
     elmet = cms.InputTag("elmet"),
@@ -272,7 +267,6 @@ process.tree = cms.EDAnalyzer("MonoJetTreeMaker",
     t1phmet = cms.InputTag("t1phmet"),
     triggerResults = cms.InputTag("TriggerResults", "", "HLT"),
     filterResults = cms.InputTag("TriggerResults", "", miniAODProcess),
-    hcalnoise = cms.InputTag("hcalnoise"),
     hbheloose = cms.InputTag("HBHENoiseFilterResultProducer","HBHENoiseFilterResultRun2Loose"),
     hbhetight = cms.InputTag("HBHENoiseFilterResultProducer","HBHENoiseFilterResultRun2Tight"),
     hbheiso   = cms.InputTag("HBHENoiseFilterResultProducer","HBHEIsoNoiseFilterResult"),
