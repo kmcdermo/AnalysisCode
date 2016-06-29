@@ -1,0 +1,1992 @@
+#include <vector>
+#include <string>
+#include <fstream>
+
+#include "TChain.h"
+#include "TTree.h"
+#include "TFile.h"
+#include "TTreeReader.h"
+#include "TH1F.h"
+#include "TH2F.h"
+#include "TGraph2D.h"
+
+void filters(){}
+
+vector<string> fileListForChain (const std::string path, bool isEOS){
+
+  vector<string> outputFileList;
+  if(isEOS)
+    system(("/afs/cern.ch/project/eos/installation/cms/bin/eos.select find "+path+" -name \"*.root\" > file.temp").c_str());
+  else
+    system(("find "+path+" -name \"*.root\" > file.temp").c_str());
+
+  
+  ifstream infile;
+  string line;
+  infile.open("file.temp",ifstream::in);   
+  if(infile.is_open()){
+    while(!infile.eof()){
+      getline(infile,line);
+      if(line == "" or not TString(line).Contains(".root")) continue;
+      if(isEOS)
+	outputFileList.push_back("root://eoscms.cern.ch//"+line);
+      else
+	outputFileList.push_back(line);
+    }
+  }
+  infile.close();
+  system("rm file.temp");
+
+  return outputFileList;
+}
+
+
+// sum xsec values inside gen-tree branch
+double sumxsec(TChain* tree){
+
+ if(tree == NULL or tree == 0)
+    return 1.;
+
+  std::cout<<"###################################"<<std::endl;
+  std::cout<<"sumxsec function --> loop on gentree: nEvents = "<<tree->GetEntries()<<std::endl;
+
+  TTreeReader treeReader(tree);
+  TTreeReaderValue<double> wgtsign (treeReader,"lheXSEC");
+
+  double xsecsum = 0.;
+  double nEvents   = 0.;
+
+  while(treeReader.Next()){    
+    if(int(nEvents) %100000 == 0){      
+      std::cout.flush();
+      std::cout<<"\r"<<"Events "<<nEvents/tree->GetEntries()*100<<"%";
+    }
+    xsecsum += (*wgtsign);
+    nEvents++;
+  }
+
+  std::cout<<"sumxsec function --> end"<<std::endl;
+  std::cout<<"###################################"<<std::endl;
+  
+  return xsecsum;
+
+}
+
+// function tht takes in input a tree and counts the total of negative and positive signs
+double sumwgt(TChain* tree) {
+
+  if(tree == NULL or tree == 0)
+    return 1.;
+
+  std::cout<<"###################################"<<std::endl;
+  std::cout<<"sumwgt function --> loop on gentree: nEntries "<<tree->GetEntries()<<std::endl;
+
+  TTreeReader treeReader(tree);
+  TTreeReaderValue<double> wgtsign (treeReader,"wgtsign");
+  double weightsum = 0.;
+  double nEvents   = 0.;
+
+  while(treeReader.Next()){    
+    if(int(nEvents) %100000 == 0){
+      std::cout.flush();
+      std::cout<<"\r "<<"Events "<<nEvents/tree->GetEntries()*100<<"%";
+    }
+    weightsum += (*wgtsign);
+    nEvents++;
+  }
+
+  std::cout<<"sumwgt function --> end"<<std::endl;
+  std::cout<<"###################################"<<std::endl;
+ 
+  return weightsum;
+  
+}
+
+//function to apply pileup re-weight, i.e. return an histogram given by the ratio between pileup in data and mc
+TH1D* pileupwgt(TChain* tree, std::string scenario = ""){
+
+  if(tree == NULL or tree == 0)
+    return 0;
+
+  std::cout<<"###################################"<<std::endl;
+  std::cout<<"pileupwgt function --> start"<<std::endl;
+  
+  // PU data  
+  TH1D*  histoPUData;
+  TFile* fileInputData;
+  
+  if(scenario == "silver"){
+    fileInputData = TFile::Open("$CMSSW_BASE/src/AnalysisCode/MonoXAnalysis/data/JSON_PILEUP/Cert_246908-260627_13TeV_PromptReco_Collisions15_25ns_JSON_Silver_v2.root");
+    histoPUData   = (TH1D*) fileInputData->Get("pileup");
+  }
+  else{
+    fileInputData = TFile::Open("$CMSSW_BASE/src/AnalysisCode/MonoXAnalysis/data/JSON_PILEUP/Cert_246908-260627_13TeV_PromptReco_Collisions15_25ns_JSON_v2.root");
+    histoPUData   = (TH1D*) fileInputData->Get("pileup");
+  }
+
+  histoPUData->SetName("histoPUData");
+  // scale to unit
+  histoPUData->Scale(1./histoPUData->Integral());
+  
+  // PU MC
+  TH1D* histoPUMC = (TH1D*) histoPUData->Clone("histoPUMC");
+  // fill an histogram with the same binning and properties of data one
+  tree->Draw("putrue >> histoPUMC","","goff");
+  // scale to unit
+  histoPUMC->Scale(1./histoPUMC->Integral());
+ 
+  // PU ratio
+  TH1D* puRatio = (TH1D*) histoPUData->Clone("histoRatio");
+  puRatio->Divide(histoPUMC);
+
+  std::cout<<"pileupwgt function --> end"<<std::endl;
+  std::cout<<"###################################"<<std::endl;
+
+  return puRatio;
+
+}
+
+//function to return the pileup weights
+void btagWeights(TTree* tree, TH2F* eff_b, TH2F* eff_c, TH2F* eff_ucsdg){
+
+  std::cout<<"###################################"<<std::endl;
+  std::cout<<"btagWeights function --> start"<<std::endl;
+
+  // smooth input histograms to deal with low statistics
+  eff_b->Smooth();
+  eff_c->Smooth();
+  eff_ucsdg->Smooth();
+
+  // make graph 2D for interpolation for central values
+  TGraph2D* graph_b = new TGraph2D(eff_b);
+  TGraph2D* graph_c = new TGraph2D(eff_c);
+  TGraph2D* graph_ucsdg = new TGraph2D(eff_ucsdg);
+
+  double jetPtMin  = 20;
+  double jetEtaMax = 2.4;
+  double btagWP    = 0.89; // medium working point
+  
+  // decleare reader
+  TTreeReader myReader(tree);
+  TTreeReaderValue<std::vector<double> > centraljetpt         (myReader,"centraljetpt");
+  TTreeReaderValue<std::vector<double> > centraljeteta        (myReader,"centraljeteta");
+  TTreeReaderValue<std::vector<double> > centraljetHFlav      (myReader,"centraljetHFlav");
+  TTreeReaderValue<std::vector<double> > centraljetbtag       (myReader,"centraljetbtag");
+  TTreeReaderValue<std::vector<double> > centraljetBtagSF     (myReader,"centraljetBtagSF");
+  TTreeReaderValue<std::vector<double> > centraljetBtagSFUp   (myReader,"centraljetBtagSFUp");
+  TTreeReaderValue<std::vector<double> > centraljetBtagSFDown (myReader,"centraljetBtagSFDown");
+
+
+  // add a b-tag weight branch for medium wp
+  double wgtbtag, wgtbtagUp, wgtbtagDown;
+  TBranch* bwgtbtag     = tree->Branch("wgtbtag", &wgtbtag, "wgtbtag/D");  
+  TBranch* bwgtbtagUp   = tree->Branch("wgtbtagUp", &wgtbtagUp, "wgtbtagUp/D");  
+  TBranch* bwgtbtagDown = tree->Branch("wgtbtagDown", &wgtbtagDown, "wgtbtagDown/D");  
+
+  long int nEvents = 0;
+
+  while(myReader.Next()){
+
+    // recipe for b-tag weight on https://twiki.cern.ch/twiki/bin/view/CMS/BTagSFMethods
+    vector<double> PMC;
+    vector<double> PDATA ;
+    vector<double> PDATAErrUp ;
+    vector<double> PDATAErrDw ;
+    double efficiency = 1.;
+
+    if(nEvents %100000 == 0){
+      std::cout<<"Events "<<float(nEvents)/tree->GetEntries()*100<<"%"<<std::endl;
+    }      
+
+    // take only events in the acceptance region for b-tagging   
+    for(size_t iJet = 0; iJet < centraljetpt->size(); iJet++){            
+      if(centraljetpt->at(iJet) > jetPtMin and fabs(centraljeteta->at(iJet)) < jetEtaMax){
+	// get efficiency
+	if(centraljetHFlav->at(iJet) == 5)
+	  efficiency     = graph_b->Interpolate(centraljetpt->at(iJet) ,fabs(centraljeteta->at(iJet)));
+	else if(centraljetHFlav->at(iJet) == 4)
+	  efficiency     = graph_c->Interpolate(centraljetpt->at(iJet),fabs(centraljeteta->at(iJet)));
+	else
+	  efficiency     = graph_ucsdg->Interpolate(centraljetpt->at(iJet),fabs(centraljeteta->at(iJet)));
+
+	//checks
+	if(efficiency > 1) efficiency = 1;
+	if(efficiency < 0) efficiency = 0;
+	
+	// check b-tag value
+	if(centraljetbtag->at(iJet) > btagWP){
+	  PMC.push_back(efficiency);
+	  PDATA.push_back(efficiency*(centraljetBtagSF->at(iJet)));		  
+	  PDATAErrUp.push_back(efficiency*(centraljetBtagSFUp->at(iJet)));
+	  PDATAErrDw.push_back(efficiency*(centraljetBtagSFDown->at(iJet)));
+	}
+	else{
+	  PMC.push_back((1-efficiency));
+	  PDATA.push_back((1-efficiency*(centraljetBtagSF->at(iJet))));
+	  PDATAErrUp.push_back(1-efficiency*(centraljetBtagSFUp->at(iJet)));
+	  PDATAErrDw.push_back(1-efficiency*(centraljetBtagSFDown->at(iJet)));
+	}	
+      }
+    }
+
+    // Fill branch
+    double Num = 1.;
+    double Den = 1.;
+
+    for(size_t iJet = 0; iJet < PMC.size(); iJet++){
+      Num *= PDATA.at(iJet);
+      Den *= PMC.at(iJet);
+    }
+
+    if(Den != 0)
+      wgtbtag = Num/Den;
+    else
+      wgtbtag = 1.;
+
+    vector<double> wbtagErr;
+    double NumMax = 1.;
+    double NumMin = 1.;
+    for(size_t iErr = 0; iErr < PDATAErrUp.size(); iErr++){
+      if(PDATAErrUp.at(iErr) > PDATAErrDw.at(iErr)){
+	NumMax *= PDATAErrUp.at(iErr);
+	NumMin *= PDATAErrDw.at(iErr);
+      }
+      else{
+	NumMax *= PDATAErrDw.at(iErr);
+	NumMin *= PDATAErrUp.at(iErr);	
+      }
+    }
+
+    if(Den != 0){
+      wgtbtagUp   = NumMax/Den;
+      wgtbtagDown = NumMin/Den;
+    }
+    else{
+      wgtbtagUp   = wgtbtag;
+      wgtbtagDown = wgtbtag;
+    }
+
+    bwgtbtag->Fill();
+    bwgtbtagUp->Fill();
+    bwgtbtagDown->Fill();
+    
+    nEvents++;
+  }
+
+  std::cout<<"btagWeights function --> end"<<std::endl;
+  std::cout<<"###################################"<<std::endl;
+
+}
+
+
+// function that take as input a ROOT file
+void sigfilter( std::string inputFileName,  // name of a single file or directory path
+		std::string outputFileName,  // output file name --> single file
+		bool isMC, // is data or MC
+		bool applyBTagWeights, // store b-tag weights
+		bool isInputDirectory, // to tell wether the inputFileName is a single file or a directory
+		bool isEOS, // if the directory is on eos or not
+		int  xsType = 0, 		
+		bool storeGenTree = false, // store gentree in the output
+		bool dropPuppiBranches = true,
+		bool dropSubJetsBranches = true
+		) {
+
+  // if xsType = 0: means keep the value inside of xsec branch in the standard tree
+  // if xsType = 1: evaluate the xs as sumwgt/Nevents (useful for powheg+minlo mono-jet samples)
+  // if xsType = 2: take the cross section from gentree lheXSEC read from the lhe file, useful for madgraph samples
+
+  std::cout<<"###################################"<<std::endl;
+  std::cout<<"sigfilter --> start function"<<std::endl;
+
+  if(inputFileName == "")
+    inputFileName = "tree.root";
+  if(outputFileName == "")
+    outputFileName = "sigtree.root";
+
+  TFile*  infile = NULL;
+  TChain* frtree = new TChain("tree/tree");
+  vector<string> fileList;
+  if( not isInputDirectory){
+    infile = TFile::Open(inputFileName.c_str());
+    frtree = (TChain*)infile->Get("tree/tree");
+  }
+  else{    
+    fileList = fileListForChain(inputFileName,isEOS);
+    for(auto name : fileList){
+      frtree->Add(name.c_str());    
+    }
+  }
+  
+  TChain* intree  = new TChain("gentree/gentree");
+  TH1D*   puRatio = NULL;
+  double  wgtsum;
+
+  if(isMC){
+    if(not isInputDirectory)
+      intree = (TChain*)infile->Get("gentree/gentree");
+    else{
+      for(auto name : fileList)
+	intree->Add(name.c_str());    
+    }    
+    // calculate sum of weights
+    wgtsum = sumwgt(intree);
+    // caluclate puweight
+    puRatio = pileupwgt(intree);
+  }
+
+  // accept signal region event if loose muons, electrons, taus and phototns == 0 and triggered by hltmet90
+  const char* cut = "nmuons == 0 && nelectrons == 0 && ntaus == 0 && nphotons == 0 && (hltmet90 > 0 || hltmet120 > 0 || hltmetwithmu120 > 0 || hltmetwithmu170 > 0 || hltmetwithmu300 > 0 || hltmetwithmu90 > 0) && t1pfmet > 175";
+
+  TFile* outfile = new TFile(outputFileName.c_str(), "RECREATE");
+  outfile->cd();
+  TDirectoryFile* treedir = new TDirectoryFile("tree", "tree"); 
+  treedir->cd();
+
+  // copy the tree applying a selection
+  std::cout<<"sigfilter --> apply signal region preselection"<<std::endl;
+  if(xsType > 0 and isMC)
+    frtree->SetBranchStatus("xsec",0);
+  if(dropPuppiBranches){
+    frtree->SetBranchStatus("*puppi*",0);
+    frtree->SetBranchStatus("*Puppi*",0);
+  }
+  if(dropSubJetsBranches){
+    frtree->SetBranchStatus("*SubJet*",0);
+  }
+  frtree->SetBranchStatus("emu*",0);
+  frtree->SetBranchStatus("taumu*",0);
+  frtree->SetBranchStatus("taue*",0);
+
+  TTree* outtree = frtree->CopyTree(cut);
+  std::cout<<"sigfilter --> outtree events "<<outtree->GetEntries()<<std::endl;
+
+  // add a weight sum branch  
+  TBranch* bwgtsum = NULL;
+  TBranch* bwgtpileup = NULL;
+  TBranch* bxsec = NULL;
+
+  double wgtpileup = 1;
+  double xsec;
+  if(xsType == 1 and isMC)
+    xsec = (wgtsum/outtree->GetEntries())*1000;
+  else if(xsType == 2 and isMC)
+    xsec = (sumxsec(intree)/outtree->GetEntries())*1000;
+  
+  if(isMC){
+
+    bwgtsum    = outtree->Branch("wgtsum", &wgtsum, "wgtsum/D");
+    bwgtpileup = outtree->Branch("wgtpileup", &wgtpileup, "wgtpileup/D");      
+    if(xsType > 0 and isMC)
+      bxsec = outtree->Branch("xsec", &xsec, "xsec/D");
+
+    TTreeReader myReader(outtree);
+    TTreeReaderValue<int> putrue(myReader,"putrue");
+    
+    std::cout<<"sigfilter --> apply sumwgt and puweight"<<std::endl;
+    long int nEvents=0;
+    while(myReader.Next()){
+      std::cout.flush();
+      if(nEvents %100000 == 0) 
+	std::cout<<"\r"<<"Event: "<<100*float(nEvents)/outtree->GetEntries()<<" %";
+      bwgtsum->Fill();
+      wgtpileup = puRatio->GetBinContent(puRatio->FindBin(*putrue));
+      bwgtpileup->Fill();    
+      if(xsType > 0 and isMC)
+	bxsec->Fill();
+      nEvents++;
+    }
+  }
+
+  if(applyBTagWeights and isMC){
+
+    std::cout<<"sigfilter --> apply btag-weight"<<std::endl; 
+    // applying b-tag weights
+    // take numerators for b-tag
+    TH2F*  eff_Num_b = 0;
+    TH2F*  eff_Num_c = 0;
+    TH2F*  eff_Num_ucsdg = 0;
+    TH2F*  eff_Denom_b = 0;
+    TH2F*  eff_Denom_c = 0;
+    TH2F*  eff_Denom_ucsdg = 0;
+
+    if(not isInputDirectory){
+
+      eff_Num_b = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_b"); 
+      eff_Num_c = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_c"); 
+      eff_Num_ucsdg = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_ucsdg"); 
+      // take denominators
+      eff_Denom_b = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_b"); 
+      eff_Denom_c = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_c"); 
+      eff_Denom_ucsdg = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_ucsdg"); 
+    }
+    else{
+
+      // loop on the file      
+      TFile* file_temp = 0;
+      for(auto name : fileList){
+	file_temp = TFile::Open(name.c_str());
+	if(not eff_Num_b){
+	  eff_Num_b = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_b")->Clone("eff_Num_b");
+	  eff_Num_b->SetDirectory(0);
+	}
+	else
+	  eff_Num_b->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_b"));
+
+	if(not eff_Num_c){
+          eff_Num_c = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_c")->Clone("eff_Num_c");
+	  eff_Num_c->SetDirectory(0);
+	}
+	else
+          eff_Num_c->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_c"));
+
+	if(not eff_Num_ucsdg){
+          eff_Num_ucsdg = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_ucsdg")->Clone("eff_Num_ucsdg");
+	  eff_Num_ucsdg->SetDirectory(0);
+	}
+	else
+          eff_Num_ucsdg->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_ucsdg"));
+
+	if(not eff_Denom_b){
+	  eff_Denom_b = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_b")->Clone("eff_Denom_b");
+	  eff_Denom_b->SetDirectory(0);
+	}
+	else
+	  eff_Denom_b->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_b"));
+	
+	if(not eff_Denom_c){
+          eff_Denom_c = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_c")->Clone("eff_Denom_c");
+	  eff_Denom_c->SetDirectory(0);
+	}
+	else
+          eff_Denom_c->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_c"));
+
+	if(not eff_Denom_ucsdg){
+          eff_Denom_ucsdg = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_ucsdg")->Clone("eff_Denom_ucdsg");
+	  eff_Denom_ucsdg->SetDirectory(0);
+	}
+	else
+          eff_Denom_ucsdg->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_ucsdg"));	
+
+	file_temp->Close();
+      }
+    }
+
+    // compute efficiency
+    TH2F* eff_b = (TH2F*) eff_Num_b->Clone("eff_b");
+    TH2F* eff_c = (TH2F*) eff_Num_b->Clone("eff_c");
+    TH2F* eff_ucsdg = (TH2F*) eff_Num_ucsdg->Clone("eff_ucsdg");
+    eff_b->Divide(eff_Denom_b);
+    eff_c->Divide(eff_Denom_c);
+    eff_ucsdg->Divide(eff_Denom_ucsdg);
+
+    btagWeights(outtree,eff_b,eff_c,eff_ucsdg);
+  }
+  
+  // write tree in the file
+  outfile->cd();
+  if(storeGenTree){
+    TDirectoryFile* gentreedir = new TDirectoryFile("gentree", "gentree"); 
+    gentreedir->cd();
+    intree->CloneTree()->Write();
+  }
+  treedir->cd();
+  outtree->Write();
+  outfile->Close();
+  std::cout<<"###################################"<<std::endl;
+  
+}
+
+// function to apply Zmumu selections
+void zmmfilter(std::string inputFileName,  // name of a single file or directory path                                                                                           
+	       std::string outputFileName,  // output file name --> single file                                                                                                 
+	       bool isMC, // is data or MC                                                                                                                                      
+	       bool applyBTagWeights, // store b-tag weights                                                                                                                    
+	       bool isInputDirectory, // to tell wether the inputFileName is a single file or a directory                                                                       
+	       bool isEOS, // if the directory is on eos or not                                                                                                                 
+	       int  xsType = 0,
+	       bool storeGenTree = false, // store gentree in the output                                                                                                      
+	       bool dropPuppiBranches = true,
+	       bool dropSubJetsBranches = true
+	       ) {
+
+  std::cout<<"###################################"<<std::endl;
+  std::cout<<"zmmfilter --> start function"<<std::endl;
+
+  if(inputFileName == "")
+    inputFileName = "tree.root";
+  if(outputFileName == "")
+    outputFileName = "zmmtree.root";
+
+  TFile* infile  =  NULL;
+  TChain* frtree = new TChain("tree/tree");
+  vector<string> fileList;
+  if( not isInputDirectory){
+    infile = TFile::Open(inputFileName.c_str());
+    frtree = (TChain*)infile->Get("tree/tree");
+  }
+  else{
+    frtree = new TChain("tree/tree");
+    fileList = fileListForChain(inputFileName,isEOS);
+    for(auto name : fileList)
+      frtree->AddFile(name.c_str());
+  }
+  
+
+  TChain* intree  = new TChain("gentree/gentree");
+  TH1D*  puRatio = NULL;
+  double wgtsum;
+
+  if(isMC){
+    if(not isInputDirectory)
+      intree = (TChain*)infile->Get("gentree/gentree");
+    else{
+      intree = new TChain("gentree/gentree");
+      for(auto name : fileList)
+        intree->AddFile(name.c_str());
+    }
+
+    // calculate sum of weights                                                                                                                                                 
+    wgtsum = sumwgt(intree);
+    // caluclate puweight                                                                                                                                                       
+    puRatio = pileupwgt(intree);
+  }
+
+    
+  // Selections 2 loose muons, 0 loose ele, taus and photons, m(mumu) = m(z) [60,120], mupt > 20, one of the two tight ... no trigger requirement
+  const char* cut = "nmuons == 2 && nelectrons == 0 && ntaus == 0 && nphotons == 0 && zmass > 60 && zmass < 120 && ((mu1pt > 20 && mu1id >= 1) || (mu2pt > 20 && mu2id >= 1)) && t1mumet > 175 && (mu1pid != mu2pid)";
+
+  TFile* outfile = new TFile(outputFileName.c_str(), "RECREATE");
+  outfile->cd();
+  TDirectoryFile* treedir = new TDirectoryFile("tree", "tree");
+  treedir->cd();
+  std::cout<<"zmmfilter --> apply signal region preselection"<<std::endl;
+
+  if(isMC and xsType > 0)
+    frtree->SetBranchStatus("xsec",0);
+  if(dropPuppiBranches){
+    frtree->SetBranchStatus("*puppi*",0);
+    frtree->SetBranchStatus("*Puppi*",0);
+  }
+  if(dropSubJetsBranches){
+    frtree->SetBranchStatus("*SubJet*",0);
+  }
+  frtree->SetBranchStatus("emu*",0);
+  frtree->SetBranchStatus("taumu*",0);
+  frtree->SetBranchStatus("taue*",0);
+
+  TTree* outtree = frtree->CopyTree(cut);
+  std::cout<<"zmmfilter --> outtree events "<<outtree->GetEntries()<<std::endl;
+
+  // add a weight sum branch                                                                                                                                                    
+  TBranch* bwgtsum;
+  TBranch *bwgtpileup; 
+  TBranch *bxsec = NULL;
+  double wgtpileup = 1;
+  double xsec;
+  if(xsType == 1 and isMC)
+    xsec = (wgtsum/outtree->GetEntries())*1000;
+  else if(xsType == 2 and isMC)
+    xsec = (sumxsec(intree)/outtree->GetEntries())*1000;
+
+  if(isMC){
+
+    bwgtsum = outtree->Branch("wgtsum", &wgtsum, "wgtsum/D");
+    bwgtpileup = outtree->Branch("wgtpileup", &wgtpileup, "wgtpileup/D");  
+    if(xsType > 0 and isMC)
+      bxsec      = outtree->Branch("xsec", &xsec, "xsec/D");
+
+    TTreeReader myReader(outtree);
+    TTreeReaderValue<int> putrue(myReader,"putrue");
+
+    std::cout<<"zmmfilter --> apply sumwgt and puweight"<<std::endl;
+    long int nEvents=0;
+    while(myReader.Next()){    
+      std::cout.flush();
+      if(nEvents %100000 == 0) 
+	std::cout<<"\r"<<"Event: "<<100*float(nEvents)/outtree->GetEntries()<<" %";
+      bwgtsum->Fill();
+      wgtpileup = puRatio->GetBinContent(puRatio->FindBin(*putrue));
+      bwgtpileup->Fill();    
+      if(xsType > 0 and isMC)
+        bxsec->Fill();
+       nEvents++;
+    }
+  }
+
+  if(applyBTagWeights and isMC){
+    
+    std::cout<<"zmmfilter --> apply btag-weight"<<std::endl;
+ 
+    // applying b-tag weights
+    // take numerators for b-tag
+    TH2F*  eff_Num_b = 0;
+    TH2F*  eff_Num_c = 0;
+    TH2F*  eff_Num_ucsdg = 0;
+    TH2F*  eff_Denom_b = 0;
+    TH2F*  eff_Denom_c = 0;
+    TH2F*  eff_Denom_ucsdg = 0;
+
+    if(not isInputDirectory){
+
+ 
+      eff_Num_b = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_b"); 
+      eff_Num_c = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_c"); 
+      eff_Num_ucsdg = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_ucsdg"); 
+      // take denominators
+      eff_Denom_b = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_b"); 
+      eff_Denom_c = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_c"); 
+      eff_Denom_ucsdg = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_ucsdg"); 
+    }
+    else{
+
+      TFile* file_temp = 0;
+      for(auto name : fileList){
+        file_temp = TFile::Open(name.c_str());
+        if(not eff_Num_b){
+          eff_Num_b = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_b")->Clone("eff_Num_b");
+	  eff_Num_b->SetDirectory(0);
+	}
+        else
+          eff_Num_b->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_b"));
+
+        if(not eff_Num_c){
+          eff_Num_c = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_c")->Clone("eff_Num_c");
+	  eff_Num_c->SetDirectory(0);
+	}
+        else
+          eff_Num_c->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_c"));
+
+        if(not eff_Num_ucsdg){
+          eff_Num_ucsdg = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_ucsdg")->Clone("eff_Num_ucsdg");
+	  eff_Num_ucsdg->SetDirectory(0);
+	}
+        else
+          eff_Num_ucsdg->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_ucsdg"));
+
+        if(not eff_Denom_b){
+          eff_Denom_b = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_b")->Clone("eff_Denom_b");
+	  eff_Denom_b->SetDirectory(0);
+	}
+        else
+          eff_Denom_b->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_b"));
+
+        if(not eff_Denom_c){
+          eff_Denom_c = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_c")->Clone("eff_Denom_c");
+	  eff_Denom_c->SetDirectory(0);
+	}
+        else
+          eff_Denom_c->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_c"));
+
+        if(not eff_Denom_ucsdg){
+          eff_Denom_ucsdg = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_ucsdg")->Clone("eff_Denom_ucdsg");
+	  eff_Denom_ucsdg->SetDirectory(0);
+	}
+        else
+          eff_Denom_ucsdg->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_ucsdg"));
+
+        file_temp->Close();
+      }
+    }
+
+    // compute efficiency
+    TH2F* eff_b = (TH2F*) eff_Num_b->Clone("eff_b");
+    TH2F* eff_c = (TH2F*) eff_Num_b->Clone("eff_c");
+    TH2F* eff_ucsdg = (TH2F*) eff_Num_ucsdg->Clone("eff_ucsdg");
+    eff_b->Divide(eff_Denom_b);
+    eff_c->Divide(eff_Denom_c);
+    eff_ucsdg->Divide(eff_Denom_ucsdg);
+    
+    btagWeights(outtree,eff_b,eff_c,eff_ucsdg);
+  }
+
+  outfile->cd();
+  if(storeGenTree){
+    TDirectoryFile* gentreedir = new TDirectoryFile("gentree", "gentree");
+    gentreedir->cd();  
+    intree->CloneTree()->Write();
+  }
+  treedir->cd();
+  outtree->Write();
+  outfile->Close();
+  std::cout<<"###################################"<<std::endl;
+
+}
+
+// function to apply Zee selections
+void zeefilter(std::string inputFileName,  // name of a single file or directory path                                                                                           
+	       std::string outputFileName,  // output file name --> single file                                                                                                 
+	       bool isMC, // is data or MC                                                                                                                                      
+	       bool applyBTagWeights, // store b-tag weights                                                                                                                    
+	       bool isInputDirectory, // to tell wether the inputFileName is a single file or a directory                                                                       
+	       bool isEOS, // if the directory is on eos or not                                                                                                                 
+	       int  xsType = 0,
+	       bool storeGenTree = false, // store gentree in the output                                                                                                        
+	       bool isSinglePhoton = false, // to use also single photon trigger when running on data: singleEle trigger on singleEle dataset, photon trigger on photon dataset
+	       bool dropPuppiBranches = true,
+	       bool dropSubJetsBranches = true
+	       ) {
+
+  std::cout<<"###################################"<<std::endl;
+  std::cout<<"zeefilter --> start function"<<std::endl;
+
+  if(inputFileName == "")
+    inputFileName = "tree.root";
+  if(outputFileName == "")
+    outputFileName = "zeetree.root";
+
+  TFile* infile  =  NULL;
+  TChain* frtree = new TChain("tree/tree");
+  vector<string> fileList ;
+  if( not isInputDirectory){
+    infile = TFile::Open(inputFileName.c_str());
+    frtree = (TChain*)infile->Get("tree/tree");
+  }
+  else{
+    frtree = new TChain("tree/tree");
+    fileList = fileListForChain(inputFileName,isEOS);
+    for(auto name : fileList)
+      frtree->AddFile(name.c_str());
+  }
+
+  TChain* intree  = new TChain("gentree/gentree");
+  TH1D*  puRatio = NULL;
+  double wgtsum;
+
+  if(isMC){
+    if(not isInputDirectory)
+      intree = (TChain*)infile->Get("gentree/gentree");
+    else{
+      intree = new TChain("gentree/gentree");
+      for(auto name : fileList)
+        intree->AddFile(name.c_str());
+    }
+
+    // calculate sum of weights                                                                                                                                                 
+    wgtsum = sumwgt(intree);
+    // caluclate puweight                                                                                                                                                       
+    puRatio = pileupwgt(intree);
+  }
+
+  const char* cut = "";
+  if(not isMC and not isSinglePhoton)
+    cut = "nmuons == 0 && nelectrons == 2 && ntaus == 0 && nphotons == 0 && zeemass > 60 && zeemass < 120 && ((el1pt > 40 && el1id >= 1) || (ele2pt > 40 && el2id >= 1)) && hltsingleel > 0 && t1elmet > 175 && (el1pid != el2pid)";
+  else if(not isMC and isSinglePhoton)
+    cut = "nmuons == 0 && nelectrons == 2 && ntaus == 0 && nphotons == 0 && zeemass > 60 && zeemass < 120 && el1pt > 40 && ((el1pt > 40 && el1id >= 1) || (ele2pt > 40 && el2id >= 1)) && hltsingleel == 0 && ( hltphoton165 > 0 || hltphoton175 > 0) && t1elmet > 175 && (el1pid != el2pid)";
+  else if(isMC)
+    cut = "nmuons == 0 && nelectrons == 2 && ntaus == 0 && nphotons == 0 && zeemass > 60 && zeemass < 120 && el1pt > 40 && ((el1pt > 40 && el1id >= 1) || (ele2pt > 40 && el2id >= 1)) && (hltsingleel > 0 || hltphoton175 > 0 || hltphoton165 > 0) && t1elmet > 175 && (el1pid != el2pid)";
+
+  TFile* outfile = new TFile(outputFileName.c_str(), "RECREATE");
+  outfile->cd();
+  TDirectoryFile* treedir = new TDirectoryFile("tree", "tree");
+  treedir->cd();
+  std::cout<<"zeefilter --> apply signal region preselection"<<std::endl;
+
+  if(xsType > 0 and isMC)
+    frtree->SetBranchStatus("xsec",0);
+  if(dropPuppiBranches){
+    frtree->SetBranchStatus("*puppi*",0);
+    frtree->SetBranchStatus("*Puppi*",0);
+  }
+  if(dropSubJetsBranches){
+    frtree->SetBranchStatus("*SubJet*",0);
+  }
+  frtree->SetBranchStatus("emu*",0);
+  frtree->SetBranchStatus("taumu*",0);
+  frtree->SetBranchStatus("taue*",0);
+
+  TTree* outtree = frtree->CopyTree(cut);
+  std::cout<<"zeefilter --> outtree events "<<outtree->GetEntries()<<std::endl;
+
+  TBranch* bwgtsum = NULL;
+  TBranch* bwgtpileup = NULL;
+  TBranch* bxsec = NULL;
+
+  double wgtpileup = 1;
+  double xsec;
+  if(xsType == 1 and isMC)
+    xsec = (wgtsum/outtree->GetEntries())*1000;
+  else if(xsType == 2 and isMC)
+    xsec = (sumxsec(intree)/outtree->GetEntries())*1000;
+
+  if(isMC){
+    bwgtsum = outtree->Branch("wgtsum", &wgtsum, "wgtsum/D");
+    bwgtpileup = outtree->Branch("wgtpileup", &wgtpileup, "wgtpileup/D");  
+    if(xsType > 0 and isMC)
+      bxsec      = outtree->Branch("xsec", &xsec, "xsec/D");
+
+    TTreeReader myReader(outtree);
+    TTreeReaderValue<int> putrue(myReader,"putrue");
+
+    std::cout<<"zeefilter --> apply sumwgt and puweight"<<std::endl;
+    long int nEvents=0;
+    while(myReader.Next()){
+      std::cout.flush();
+      if(nEvents %100000 == 0) 
+	std::cout<<"\r"<<"Event: "<<100*float(nEvents)/outtree->GetEntries()<<" %";
+      bwgtsum->Fill();
+      wgtpileup = puRatio->GetBinContent(puRatio->FindBin(*putrue));
+      bwgtpileup->Fill();    
+      if(xsType > 0 and isMC)
+        bxsec->Fill();
+      nEvents++;
+    }
+  }
+
+  if(applyBTagWeights and isMC){
+    
+    std::cout<<"zeefilter --> apply btag-weight"<<std::endl;
+
+    // applying b-tag weights
+    // take numerators for b-tag
+    TH2F*  eff_Num_b = 0;
+    TH2F*  eff_Num_c = 0;
+    TH2F*  eff_Num_ucsdg = 0;
+    TH2F*  eff_Denom_b = 0;
+    TH2F*  eff_Denom_c = 0;
+    TH2F*  eff_Denom_ucsdg = 0;
+
+    if(not isInputDirectory){ 
+      eff_Num_b = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_b"); 
+      eff_Num_c = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_c"); 
+      eff_Num_ucsdg = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_ucsdg"); 
+      // take denominators
+      eff_Denom_b = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_b"); 
+      eff_Denom_c = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_c"); 
+      eff_Denom_ucsdg = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_ucsdg"); 
+    }
+    else{
+
+      TFile* file_temp = 0;
+      for(auto name : fileList){
+        file_temp = TFile::Open(name.c_str());
+        if(not eff_Num_b){
+          eff_Num_b = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_b")->Clone("eff_Num_b");
+	  eff_Num_b->SetDirectory(0);
+	}
+        else
+          eff_Num_b->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_b"));
+
+        if(not eff_Num_c){
+          eff_Num_c = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_c")->Clone("eff_Num_c");
+	  eff_Num_c->SetDirectory(0);
+	}
+        else
+          eff_Num_c->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_c"));
+
+        if(not eff_Num_ucsdg){
+          eff_Num_ucsdg = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_ucsdg")->Clone("eff_Num_ucsdg");
+	  eff_Num_ucsdg->SetDirectory(0);
+	}
+        else
+          eff_Num_ucsdg->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_ucsdg"));
+
+        if(not eff_Denom_b){
+          eff_Denom_b = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_b")->Clone("eff_Denom_b");
+	  eff_Denom_b->SetDirectory(0);
+	}
+        else
+          eff_Denom_b->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_b"));
+
+        if(not eff_Denom_c){
+          eff_Denom_c = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_c")->Clone("eff_Denom_c");
+	  eff_Denom_c->SetDirectory(0);
+	}
+        else
+          eff_Denom_c->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_c"));
+
+        if(not eff_Denom_ucsdg){
+          eff_Denom_ucsdg = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_ucsdg")->Clone("eff_Denom_ucdsg");
+	  eff_Denom_ucsdg->SetDirectory(0);
+	}
+        else
+          eff_Denom_ucsdg->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_ucsdg"));
+
+        file_temp->Close();
+      }
+    }
+
+    // compute efficiency
+    TH2F* eff_b = (TH2F*) eff_Num_b->Clone("eff_b");
+    TH2F* eff_c = (TH2F*) eff_Num_b->Clone("eff_c");
+    TH2F* eff_ucsdg = (TH2F*) eff_Num_ucsdg->Clone("eff_ucsdg");
+    eff_b->Divide(eff_Denom_b);
+    eff_c->Divide(eff_Denom_c);
+    eff_ucsdg->Divide(eff_Denom_ucsdg);
+    
+    btagWeights(outtree,eff_b,eff_c,eff_ucsdg);
+  }
+
+  outfile->cd();
+  if(storeGenTree){
+    TDirectoryFile* gentreedir = new TDirectoryFile("gentree", "gentree");
+    gentreedir->cd();
+    intree->CloneTree()->Write();
+  }
+  treedir->cd();
+  outtree->Write();
+  outfile->Close();
+  std::cout<<"###################################"<<std::endl;
+
+}
+
+// function to apply Wmunu selections
+void wmnfilter(std::string inputFileName,  // name of a single file or directory path                                                                                           
+	       std::string outputFileName,  // output file name --> single file                                                                                                 
+	       bool isMC, // is data or MC                                                                                                                                      
+	       bool applyBTagWeights, // store b-tag weights                                                                                                                    
+	       bool isInputDirectory, // to tell wether the inputFileName is a single file or a directory                                                                       
+	       bool isEOS, // if the directory is on eos or not                                                                                                                 
+	       int  xsType = 0,
+	       bool storeGenTree = false, // store gentree in the output                                                                                                        
+	       bool dropPuppiBranches = true,
+	       bool dropSubJetsBranches = true
+	       ) {
+
+  std::cout<<"###################################"<<std::endl;
+  std::cout<<"wmnfilter --> start function"<<std::endl;
+
+  if(inputFileName == "")
+    inputFileName = "tree.root";
+  if(outputFileName == "")
+    outputFileName = "wmntree.root";
+
+  TFile* infile  =  NULL;
+  TChain* frtree = new TChain("tree/tree");
+  vector<string> fileList;
+  if( not isInputDirectory){
+    infile = TFile::Open(inputFileName.c_str());
+    frtree = (TChain*)infile->Get("tree/tree");
+  }
+  else{
+    frtree = new TChain("tree/tree");
+    fileList = fileListForChain(inputFileName,isEOS);
+    for(auto name : fileList)
+      frtree->AddFile(name.c_str());
+  }
+  
+  TChain* intree  = new TChain("gentree/gentree");
+  TH1D*   puRatio = NULL;
+  double  wgtsum;
+
+  if(isMC){
+    if(not isInputDirectory)
+      intree = (TChain*)infile->Get("gentree/gentree");
+    else{
+      intree = new TChain("gentree/gentree");
+      for(auto name : fileList)
+        intree->AddFile(name.c_str());
+    }
+
+    // calculate sum of weights                                                                                                                                                 
+    wgtsum = sumwgt(intree);
+    // caluclate puweight                                                                                                                                                       
+    puRatio = pileupwgt(intree);
+  }
+
+
+  const char* cut = "nmuons == 1 && nelectrons == 0 && ntaus == 0 && nphotons == 0 && mu1pt > 20 && mu1id >= 1 && t1mumet > 175";
+  
+  TFile* outfile = new TFile(outputFileName.c_str(), "RECREATE");
+  outfile->cd();
+  TDirectoryFile* treedir = new TDirectoryFile("tree", "tree");
+  treedir->cd();
+  std::cout<<"wmnfilter --> apply signal region preselection"<<std::endl;
+  if(xsType > 0 and isMC)
+    frtree->SetBranchStatus("xsec",0);
+
+  TTree* outtree = frtree->CopyTree(cut);
+  std::cout<<"wmnfilter --> outtree events "<<outtree->GetEntries()<<std::endl;
+
+  TBranch* bwgtsum = NULL;
+  TBranch* bwgtpileup = NULL;
+  TBranch* bxsec = NULL;
+  double wgtpileup = 1;
+  double xsec;
+  if(xsType == 1 and isMC)
+    xsec = (wgtsum/outtree->GetEntries())*1000;
+  else if(xsType == 2 and isMC)
+    xsec = (sumxsec(intree)/outtree->GetEntries())*1000;
+  if(dropPuppiBranches){
+    frtree->SetBranchStatus("*puppi*",0);
+    frtree->SetBranchStatus("*Puppi*",0);
+  }
+  if(dropSubJetsBranches){
+    frtree->SetBranchStatus("*SubJet*",0);
+  }
+  frtree->SetBranchStatus("emu*",0);
+  frtree->SetBranchStatus("taumu*",0);
+  frtree->SetBranchStatus("taue*",0);
+
+  if(isMC){
+
+    bwgtsum = outtree->Branch("wgtsum", &wgtsum, "wgtsum/D");
+    bwgtpileup = outtree->Branch("wgtpileup", &wgtpileup, "wgtpileup/D");  
+    if(xsType > 0 and isMC)
+      bxsec      = outtree->Branch("xsec", &xsec, "xsec/D");
+
+    TTreeReader myReader(outtree);    
+    TTreeReaderValue<int> putrue(myReader,"putrue");
+    std::cout<<"wmnfilter --> apply sumwgt and puweight"<<std::endl;    
+    long int nEvents=0;
+    while(myReader.Next()){
+      std::cout.flush();
+      if(nEvents %100000 == 0) 
+	std::cout<<"\r"<<"Event: "<<100*float(nEvents)/outtree->GetEntries()<<" %";
+      bwgtsum->Fill();
+      wgtpileup = puRatio->GetBinContent(puRatio->FindBin(*putrue));
+      bwgtpileup->Fill();          
+      if(xsType > 0 and isMC)
+        bxsec->Fill();
+      nEvents++;      
+    }    
+  }
+
+  if(applyBTagWeights and isMC){
+
+    std::cout<<"wmnfilter --> apply btag-weight"<<std::endl;
+
+    // applying b-tag weights
+    // take numerators for b-tag
+    TH2F*  eff_Num_b = 0;
+    TH2F*  eff_Num_c = 0;
+    TH2F*  eff_Num_ucsdg = 0;
+    TH2F*  eff_Denom_b = 0;
+    TH2F*  eff_Denom_c = 0;
+    TH2F*  eff_Denom_ucsdg = 0;
+
+    if(not isInputDirectory){ 
+      eff_Num_b = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_b"); 
+      eff_Num_c = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_c"); 
+      eff_Num_ucsdg = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_ucsdg"); 
+      // take denominators
+      eff_Denom_b = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_b"); 
+      eff_Denom_c = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_c"); 
+      eff_Denom_ucsdg = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_ucsdg"); 
+    }
+    else{
+      TFile* file_temp = 0;
+      for(auto name : fileList){
+        file_temp = TFile::Open(name.c_str());
+        if(not eff_Num_b){
+          eff_Num_b = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_b")->Clone("eff_Num_b");
+	  eff_Num_b->SetDirectory(0);
+	}
+        else
+          eff_Num_b->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_b"));
+
+        if(not eff_Num_c){
+          eff_Num_c = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_c")->Clone("eff_Num_c");
+	  eff_Num_c->SetDirectory(0);
+	}
+        else
+          eff_Num_c->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_c"));
+
+        if(not eff_Num_ucsdg){
+          eff_Num_ucsdg = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_ucsdg")->Clone("eff_Num_ucsdg");
+	  eff_Num_ucsdg->SetDirectory(0);
+	}
+        else
+          eff_Num_ucsdg->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_ucsdg"));
+
+        if(not eff_Denom_b){
+          eff_Denom_b = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_b")->Clone("eff_Denom_b");
+	  eff_Denom_b->SetDirectory(0);
+	}
+        else
+          eff_Denom_b->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_b"));
+
+        if(not eff_Denom_c){
+          eff_Denom_c = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_c")->Clone("eff_Denom_c");
+	  eff_Denom_c->SetDirectory(0);
+	}
+        else
+          eff_Denom_c->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_c"));
+
+        if(not eff_Denom_ucsdg){
+          eff_Denom_ucsdg = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_ucsdg")->Clone("eff_Denom_ucdsg");
+	  eff_Denom_ucsdg->SetDirectory(0);
+	}
+        else
+          eff_Denom_ucsdg->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_ucsdg"));
+
+        file_temp->Close();
+      }
+    }
+    // compute efficiency
+    TH2F* eff_b = (TH2F*) eff_Num_b->Clone("eff_b");
+    TH2F* eff_c = (TH2F*) eff_Num_b->Clone("eff_c");
+    TH2F* eff_ucsdg = (TH2F*) eff_Num_ucsdg->Clone("eff_ucsdg");
+    eff_b->Divide(eff_Denom_b);
+    eff_c->Divide(eff_Denom_c);
+    eff_ucsdg->Divide(eff_Denom_ucsdg);
+    
+    btagWeights(outtree,eff_b,eff_c,eff_ucsdg);
+
+  }
+
+  outfile->cd();
+  if(storeGenTree){
+    TDirectoryFile* gentreedir = new TDirectoryFile("gentree", "gentree");
+    gentreedir->cd();  
+    intree->CloneTree()->Write();
+  }
+  treedir->cd();
+  outtree->Write();
+  outfile->Close();
+  std::cout<<"###################################"<<std::endl;
+
+}
+
+// function to apply Wenu selections
+void wenfilter(std::string inputFileName,  // name of a single file or directory path                                                                                           
+	       std::string outputFileName,  // output file name --> single file                                                                                                 
+	       bool isMC, // is data or MC                                                                                                                                      
+	       bool applyBTagWeights, // store b-tag weights                                                                                                                    
+	       bool isInputDirectory, // to tell wether the inputFileName is a single file or a directory                                                                       
+	       bool isEOS, // if the directory is on eos or not                                                                                                                 
+	       int  xsType = 0,
+	       bool storeGenTree = false, // store gentree in the output                                                                                                        
+	       bool isSinglePhoton = false,
+	       bool dropPuppiBranches = true,
+	       bool dropSubJetsBranches = true) {
+
+  std::cout<<"###################################"<<std::endl;
+  std::cout<<"wenfilter --> start function"<<std::endl;
+
+  if(inputFileName == "")
+    inputFileName = "tree.root";
+  if(outputFileName == "")
+    outputFileName = "wentree.root";
+
+  TFile* infile  =  NULL;
+  TChain* frtree = new TChain("tree/tree");
+  vector<string> fileList;
+  if( not isInputDirectory){
+    infile = TFile::Open(inputFileName.c_str());
+    frtree = (TChain*)infile->Get("tree/tree");
+  }
+  else{
+    frtree = new TChain("tree/tree");
+    fileList = fileListForChain(inputFileName,isEOS);
+    for(auto name : fileList)
+      frtree->AddFile(name.c_str());
+  }
+
+
+  TChain* intree  = new TChain("gentree/gentree");
+  TH1D*   puRatio = NULL;
+  double  wgtsum;
+
+  if(isMC){
+    if(not isInputDirectory)
+      intree = (TChain*)infile->Get("gentree/gentree");
+    else{
+      intree = new TChain("gentree/gentree");
+      for(auto name : fileList)
+        intree->AddFile(name.c_str());
+    }
+
+    // calculate sum of weights                                                                                                                                               
+    wgtsum = sumwgt(intree);
+    // caluclate puweight                                                                                                                                                       
+    puRatio = pileupwgt(intree);
+  }
+
+
+  const char* cut = "";
+  if(not isMC and not isSinglePhoton)
+    cut = "nmuons == 0 && nelectrons == 1 && ntaus == 0 && nphotons == 0 && el1pt > 40 && el1id >= 1 && hltsingleel > 0 && t1elmet > 175";
+  else if(not isMC and isSinglePhoton)
+    cut = "nmuons == 0 && nelectrons == 1 && ntaus == 0 && nphotons == 0 && el1pt > 40 && el1id >= 1 && hltsingleel == 0 && (hltphoton165 > 0 || hltphoton175 > 0) && t1elmet > 175 ";
+  else if(isMC)
+    cut = "nmuons == 0 && nelectrons == 1 && ntaus == 0 && nphotons == 0 && el1pt > 40 && el1id >= 1 && (hltsingleel > 0 || hltphoton165 > 0 || hltphoton175 > 0) && t1elmet > 175";
+
+  
+  TFile* outfile = new TFile(outputFileName.c_str(), "RECREATE");
+  outfile->cd();
+  TDirectoryFile* treedir = new TDirectoryFile("tree", "tree");
+  treedir->cd();
+  std::cout<<"wenfilter --> apply signal region preselection"<<std::endl;
+
+  if(xsType > 0 and isMC)
+    frtree->SetBranchStatus("xsec",0);
+  if(dropPuppiBranches){
+    frtree->SetBranchStatus("*puppi*",0);
+    frtree->SetBranchStatus("*Puppi*",0);
+  }
+  if(dropSubJetsBranches){
+    frtree->SetBranchStatus("*SubJet*",0);
+  }
+  frtree->SetBranchStatus("emu*",0);
+  frtree->SetBranchStatus("taumu*",0);
+  frtree->SetBranchStatus("taue*",0);
+
+  TTree* outtree = frtree->CopyTree(cut);
+  std::cout<<"wenfilter --> outtree events "<<outtree->GetEntries()<<std::endl;
+
+  TBranch* bwgtsum = NULL;
+  TBranch* bwgtpileup = NULL;
+  TBranch* bxsec =  NULL;
+  double wgtpileup = 1;
+  double xsec;
+  if(xsType == 1 and isMC)
+    xsec = (wgtsum/outtree->GetEntries())*1000;
+  else if(xsType == 2 and isMC)
+    xsec = (sumxsec(intree)/outtree->GetEntries())*1000;
+
+  if(isMC){
+    bwgtsum = outtree->Branch("wgtsum", &wgtsum, "wgtsum/D");
+    bwgtpileup = outtree->Branch("wgtpileup", &wgtpileup, "wgtpileup/D");  
+    if(xsType > 0 and isMC)
+      bxsec      = outtree->Branch("xsec", &xsec, "xsec/D");
+
+    TTreeReader myReader(outtree);
+    TTreeReaderValue<int> putrue(myReader,"putrue");
+
+    std::cout<<"wenfilter --> apply sumwgt and puweight"<<std::endl;
+    long int nEvents=0;
+    while(myReader.Next()){
+      std::cout.flush();
+      if(nEvents %100000 == 0) 
+	std::cout<<"\r"<<"Event: "<<100*float(nEvents)/outtree->GetEntries()<<" %";
+	bwgtsum->Fill();
+	wgtpileup = puRatio->GetBinContent(puRatio->FindBin(*putrue));
+	bwgtpileup->Fill();    
+	if(xsType > 0 and isMC)
+	  bxsec->Fill();
+	nEvents++;
+    }
+  }
+
+  if(applyBTagWeights and isMC){
+    
+    std::cout<<"wenfilter --> apply btag-weight"<<std::endl;
+
+    // applying b-tag weights
+    // take numerators for b-tag
+    TH2F*  eff_Num_b = 0;
+    TH2F*  eff_Num_c = 0;
+    TH2F*  eff_Num_ucsdg = 0;
+    TH2F*  eff_Denom_b = 0;
+    TH2F*  eff_Denom_c = 0;
+    TH2F*  eff_Denom_ucsdg = 0;
+
+    if(not isInputDirectory){
+      eff_Num_b = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_b"); 
+      eff_Num_c = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_c"); 
+      eff_Num_ucsdg = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_ucsdg"); 
+      // take denominators
+      eff_Denom_b = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_b"); 
+      eff_Denom_c = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_c"); 
+      eff_Denom_ucsdg = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_ucsdg"); 
+    }
+    else{
+      TFile* file_temp = 0;
+      for(auto name : fileList){
+        file_temp = TFile::Open(name.c_str());
+        if(not eff_Num_b){
+          eff_Num_b = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_b")->Clone("eff_Num_b");
+	  eff_Num_b->SetDirectory(0);
+	}
+        else
+          eff_Num_b->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_b"));
+
+        if(not eff_Num_c){
+          eff_Num_c = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_c")->Clone("eff_Num_c");
+	  eff_Num_c->SetDirectory(0);
+	}
+        else
+          eff_Num_c->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_c"));
+
+        if(not eff_Num_ucsdg){
+          eff_Num_ucsdg = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_ucsdg")->Clone("eff_Num_ucsdg");
+	  eff_Num_ucsdg->SetDirectory(0);
+	}
+        else
+          eff_Num_ucsdg->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_ucsdg"));
+
+        if(not eff_Denom_b){
+          eff_Denom_b = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_b")->Clone("eff_Denom_b");
+	  eff_Denom_b->SetDirectory(0);
+	}
+        else
+          eff_Denom_b->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_b"));
+
+        if(not eff_Denom_c){
+          eff_Denom_c = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_c")->Clone("eff_Denom_c");
+	  eff_Denom_c->SetDirectory(0);
+	}
+        else
+          eff_Denom_c->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_c"));
+
+        if(not eff_Denom_ucsdg){
+          eff_Denom_ucsdg = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_ucsdg")->Clone("eff_Denom_ucdsg");
+	  eff_Denom_ucsdg->SetDirectory(0);
+	}
+        else
+          eff_Denom_ucsdg->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_ucsdg"));
+
+        file_temp->Close();
+      }
+    }
+
+    // compute efficiency
+    TH2F* eff_b = (TH2F*) eff_Num_b->Clone("eff_b");
+    TH2F* eff_c = (TH2F*) eff_Num_b->Clone("eff_c");
+    TH2F* eff_ucsdg = (TH2F*) eff_Num_ucsdg->Clone("eff_ucsdg");
+    eff_b->Divide(eff_Denom_b);
+    eff_c->Divide(eff_Denom_c);
+    eff_ucsdg->Divide(eff_Denom_ucsdg);
+    
+    btagWeights(outtree,eff_b,eff_c,eff_ucsdg);
+  }
+
+  outfile->cd();
+  if(storeGenTree){
+    TDirectoryFile* gentreedir = new TDirectoryFile("gentree", "gentree");
+    gentreedir->cd();  
+    intree->CloneTree()->Write();
+  }
+  treedir->cd();
+  outtree->Write();
+  outfile->Close();
+  std::cout<<"###################################"<<std::endl;
+}
+
+// function to apply photon+jets selections
+void gamfilter(std::string inputFileName,  // name of a single file or directory path                                                                                           
+	       std::string outputFileName,  // output file name --> single file                                                                                                 
+	       bool isMC, // is data or MC                                                                                                                                      
+	       bool applyBTagWeights, // store b-tag weights                                                                                                                    
+	       bool isInputDirectory, // to tell wether the inputFileName is a single file or a directory                                                                       
+	       bool isEOS, // if the directory is on eos or not                                                                                                                 
+	       int  xsType = 0,
+	       bool storeGenTree = false, // store gentree in the output                                                                                                   
+	       bool dropPuppiBranches = true,
+	       bool dropSubJetsBranches = true
+	       ) {
+
+  std::cout<<"###################################"<<std::endl;
+  std::cout<<"gamfilter --> start function"<<std::endl;
+
+  if(inputFileName == "")
+    inputFileName = "tree.root";
+  if(outputFileName == "")
+    outputFileName = "gamtree.root";
+  
+
+  TFile* infile  =  NULL;
+  TChain* frtree = new TChain("tree/tree");
+  vector<string> fileList;
+  if( not isInputDirectory){
+    infile = TFile::Open(inputFileName.c_str());
+    frtree = (TChain*)infile->Get("tree/tree");
+  }
+  else{
+    frtree = new TChain("tree/tree");
+    fileList = fileListForChain(inputFileName,isEOS);
+    for(auto name : fileList)
+      frtree->AddFile(name.c_str());
+  }
+
+  TChain* intree  = new TChain("gentree/gentree");
+  TH1D*   puRatio = NULL;
+  double  wgtsum;
+
+  if(isMC){
+    if(not isInputDirectory)
+      intree = (TChain*)infile->Get("gentree/gentree");
+    else{
+      intree = new TChain("gentree/gentree");
+      for(auto name : fileList)
+        intree->AddFile(name.c_str());
+    }
+
+    // calculate sum of weights                                                                                                                                             
+    wgtsum = sumwgt(intree);
+    // caluclate puweight                                                                                                                                                       
+    puRatio = pileupwgt(intree);
+  }
+
+
+  // medium id + pt + veto
+  const char* cut = "nmuons == 0 && nelectrons == 0 && ntaus == 0 && nphotons == 1 && phpt > 120 && phidm == 1 && t1phmet > 175";
+  
+  TFile* outfile = new TFile(outputFileName.c_str(), "RECREATE");
+  outfile->cd();
+  TDirectoryFile* treedir = new TDirectoryFile("tree", "tree");
+  treedir->cd();
+  std::cout<<"gamfilter --> apply signal region preselection"<<std::endl;
+  if(xsType > 0 and isMC)
+    frtree->SetBranchStatus("xsec",0);
+  if(dropPuppiBranches){
+    frtree->SetBranchStatus("*puppi*",0);
+    frtree->SetBranchStatus("*Puppi*",0);
+  }
+  if(dropSubJetsBranches){
+    frtree->SetBranchStatus("*SubJet*",0);
+  }
+  frtree->SetBranchStatus("emu*",0);
+  frtree->SetBranchStatus("taumu*",0);
+  frtree->SetBranchStatus("taue*",0);
+
+  TTree* outtree = frtree->CopyTree(cut);
+  std::cout<<"gamfilter --> outtree events "<<outtree->GetEntries()<<std::endl;
+
+  TBranch* bwgtsum = NULL;
+  TBranch* bwgtpileup = NULL;
+  TBranch* bxsec = NULL;
+  double wgtpileup = 1;
+  double xsec;
+  if(xsType == 1 and isMC)
+    xsec = (wgtsum/outtree->GetEntries())*1000;
+  else if(xsType == 2 and isMC)
+    xsec = (sumxsec(intree)/outtree->GetEntries())*1000;
+
+  if(isMC){
+
+    bwgtsum = outtree->Branch("wgtsum", &wgtsum, "wgtsum/D");
+    bwgtpileup = outtree->Branch("wgtpileup", &wgtpileup, "wgtpileup/D");  
+    if(xsType > 0 and isMC)
+      bxsec      = outtree->Branch("xsec", &xsec, "xsec/D");
+
+    TTreeReader myReader(outtree);
+    TTreeReaderValue<int> putrue(myReader,"putrue");
+
+    std::cout<<"gamfilter --> apply sumwgt and puweight"<<std::endl;
+    long int nEvents=0;
+    while(myReader.Next()){
+      std::cout.flush();
+      if(nEvents %100000 == 0) 
+	std::cout<<"\r"<<"Event: "<<100*float(nEvents)/outtree->GetEntries()<<" %";
+	bwgtsum->Fill();
+	wgtpileup = puRatio->GetBinContent(puRatio->FindBin(*putrue));
+	bwgtpileup->Fill();    
+	if(xsType > 0 and isMC)
+	  bxsec->Fill();
+	nEvents++;
+    }
+  }
+
+  if(applyBTagWeights and isMC){
+    
+    std::cout<<"gamfilter --> apply btag-weight"<<std::endl;
+
+    // applying b-tag weights
+    // take numerators for b-tag
+    TH2F*  eff_Num_b = 0;
+    TH2F*  eff_Num_c = 0;
+    TH2F*  eff_Num_ucsdg = 0;
+    TH2F*  eff_Denom_b = 0;
+    TH2F*  eff_Denom_c = 0;
+    TH2F*  eff_Denom_ucsdg = 0;
+
+    if(not isInputDirectory){      
+      eff_Num_b = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_b"); 
+      eff_Num_c = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_c"); 
+      eff_Num_ucsdg = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_ucsdg"); 
+      // take denominators
+      eff_Denom_b = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_b"); 
+      eff_Denom_c = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_c"); 
+      eff_Denom_ucsdg = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_ucsdg"); 
+    }
+    else{
+      TFile* file_temp = 0;
+      for(auto name : fileList){
+        file_temp = TFile::Open(name.c_str());
+        if(not eff_Num_b){
+          eff_Num_b = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_b")->Clone("eff_Num_b");
+	  eff_Num_b->SetDirectory(0);
+	}
+        else
+          eff_Num_b->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_b"));
+
+        if(not eff_Num_c){
+          eff_Num_c = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_c")->Clone("eff_Num_c");
+	  eff_Num_c->SetDirectory(0);
+	}
+        else
+          eff_Num_c->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_c"));
+
+        if(not eff_Num_ucsdg){
+          eff_Num_ucsdg = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_ucsdg")->Clone("eff_Num_ucsdg");
+	  eff_Num_ucsdg->SetDirectory(0);
+	}
+        else
+          eff_Num_ucsdg->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_ucsdg"));
+
+        if(not eff_Denom_b){
+          eff_Denom_b = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_b")->Clone("eff_Denom_b");
+	  eff_Denom_b->SetDirectory(0);
+	}
+        else
+          eff_Denom_b->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_b"));
+
+        if(not eff_Denom_c){
+          eff_Denom_c = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_c")->Clone("eff_Denom_c");
+	  eff_Denom_c->SetDirectory(0);
+	}
+        else
+          eff_Denom_c->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_c"));
+
+        if(not eff_Denom_ucsdg){
+          eff_Denom_ucsdg = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_ucsdg")->Clone("eff_Denom_ucdsg");
+	  eff_Denom_ucsdg->SetDirectory(0);
+	}
+        else
+          eff_Denom_ucsdg->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_ucsdg"));
+
+        file_temp->Close();
+      }
+    }
+
+    // compute efficiency
+    TH2F* eff_b = (TH2F*) eff_Num_b->Clone("eff_b");
+    TH2F* eff_c = (TH2F*) eff_Num_b->Clone("eff_c");
+    TH2F* eff_ucsdg = (TH2F*) eff_Num_ucsdg->Clone("eff_ucsdg");
+    eff_b->Divide(eff_Denom_b);
+    eff_c->Divide(eff_Denom_c);
+    eff_ucsdg->Divide(eff_Denom_ucsdg);
+    
+    btagWeights(outtree,eff_b,eff_c,eff_ucsdg);
+  }  
+
+  outfile->cd();
+  if(storeGenTree){
+    TDirectoryFile* gentreedir = new TDirectoryFile("gentree", "gentree");
+    gentreedir->cd();  
+    intree->CloneTree()->Write();
+  }
+  treedir->cd();
+  outtree->Write();
+  outfile->Close();
+  std::cout<<"###################################"<<std::endl;
+
+}
+
+
+
+// function to apply photon+jets selections
+void topmufilter(std::string inputFileName,  // name of a single file or directory path                                                                                        
+		 std::string outputFileName,  // output file name --> single file                                                                                            
+		 bool isMC, // is data or MC                                                                                                                                  
+		 bool applyBTagWeights, // store b-tag weights                                                                                                                
+		 bool isInputDirectory, // to tell wether the inputFileName is a single file or a directory                                                                   
+		 bool isEOS, // if the directory is on eos or not                                                                                                             
+		 int  xsType = 0,
+		 bool storeGenTree = false, // store gentree in the output                                                                                                     
+		 bool dropPuppiBranches = true,
+		 bool dropSubJetsBranches = true
+	       ) {
+
+  std::cout<<"###################################"<<std::endl;
+  std::cout<<"topmufilter --> start function"<<std::endl;
+
+  if(inputFileName == "")
+    inputFileName = "tree.root";
+  if(outputFileName == "")
+    outputFileName = "topmutree.root";
+
+  TFile* infile  =  NULL;
+  TChain* frtree = new TChain("tree/tree");
+  vector<string> fileList;
+  if( not isInputDirectory){
+    infile = TFile::Open(inputFileName.c_str());
+    frtree = (TChain*)infile->Get("tree/tree");
+  }
+  else{
+    frtree = new TChain("tree/tree");
+    fileList = fileListForChain(inputFileName,isEOS);
+    for(auto name : fileList)
+      frtree->AddFile(name.c_str());
+  }
+  
+
+  TChain* intree  = new TChain("gentree/gentree");
+  TH1D*   puRatio = NULL;
+  double  wgtsum;
+
+  if(isMC){
+    if(not isInputDirectory)
+      intree = (TChain*)infile->Get("gentree/gentree");
+    else{
+      intree = new TChain("gentree/gentree");
+      for(auto name : fileList)
+        intree->AddFile(name.c_str());
+    }
+    // calculate sum of weights                                                                                                                                             
+    wgtsum = sumwgt(intree);
+    // caluclate puweight                                                                                                                                                      
+    puRatio = pileupwgt(intree);
+  }
+
+
+  // one tight muon + b-jet --> semi-leptonic ttbar events
+  const char* cut = "nmuons == 1 && nelectrons == 0 && ntaus == 0 && nphotons == 0 && nbjets > 0 && mu1id >=1 && mu1pt > 20 && t1mumet > 175";
+  
+  TFile* outfile = new TFile(outputFileName.c_str(), "RECREATE");
+  outfile->cd();
+  TDirectoryFile* treedir = new TDirectoryFile("tree", "tree");
+  treedir->cd();
+  std::cout<<"topfilter --> apply signal region preselection"<<std::endl;
+  if(xsType > 0 and isMC)
+    frtree->SetBranchStatus("xsec",0);
+
+  if(dropPuppiBranches){
+    frtree->SetBranchStatus("*puppi*",0);
+    frtree->SetBranchStatus("*Puppi*",0);
+  }
+  if(dropSubJetsBranches){
+    frtree->SetBranchStatus("*SubJet*",0);
+  }
+  frtree->SetBranchStatus("emu*",0);
+  frtree->SetBranchStatus("taumu*",0);
+  frtree->SetBranchStatus("taue*",0);
+
+  TTree* outtree = frtree->CopyTree(cut);
+  std::cout<<"topfilter --> outtree events "<<outtree->GetEntries()<<std::endl;
+
+  TBranch* bwgtsum = NULL;
+  TBranch* bwgtpileup = NULL;
+  TBranch* bxsec = NULL;
+  double wgtpileup = 1;
+  double xsec;
+  if(xsType == 1 and isMC)
+    xsec = (wgtsum/outtree->GetEntries())*1000;
+  else if(xsType == 2 and isMC)
+    xsec = (sumxsec(intree)/outtree->GetEntries())*1000;
+
+  if(isMC){
+
+    bwgtsum = outtree->Branch("wgtsum", &wgtsum, "wgtsum/D");
+    bwgtpileup = outtree->Branch("wgtpileup", &wgtpileup, "wgtpileup/D");  
+    if(xsType > 0 and isMC)
+      bxsec      = outtree->Branch("xsec", &xsec, "xsec/D");
+
+    TTreeReader myReader(outtree);
+    TTreeReaderValue<int> putrue(myReader,"putrue");
+
+    std::cout<<"topfilter --> apply sumwgt and puweight"<<std::endl;
+    long int nEvents=0;
+    while(myReader.Next()){
+      std::cout.flush();
+      if(nEvents %100000 == 0) 
+	std::cout<<"\r"<<"Event: "<<100*float(nEvents)/outtree->GetEntries()<<" %";
+	bwgtsum->Fill();
+	wgtpileup = puRatio->GetBinContent(*putrue);
+	bwgtpileup->Fill();    
+	if(xsType > 0 and isMC)
+	  bxsec->Fill();
+	nEvents++;
+    }
+  }
+
+  if(applyBTagWeights and isMC){
+    
+    std::cout<<"topfilter --> apply btag-weight"<<std::endl;
+
+    // applying b-tag weights
+    // take numerators for b-tag
+    TH2F*  eff_Num_b = 0;
+    TH2F*  eff_Num_c = 0;
+    TH2F*  eff_Num_ucsdg = 0;
+    TH2F*  eff_Denom_b = 0;
+    TH2F*  eff_Denom_c = 0;
+    TH2F*  eff_Denom_ucsdg = 0;
+
+    if(not isInputDirectory){ 
+      eff_Num_b = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_b"); 
+      eff_Num_c = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_c"); 
+      eff_Num_ucsdg = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_ucsdg"); 
+      // take denominators
+      eff_Denom_b = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_b"); 
+      eff_Denom_c = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_c"); 
+      eff_Denom_ucsdg = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_ucsdg"); 
+    }
+    else{
+      TFile* file_temp = 0;
+      for(auto name : fileList){
+        file_temp = TFile::Open(name.c_str());
+        if(not eff_Num_b){
+          eff_Num_b = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_b")->Clone("eff_Num_b");
+	  eff_Num_b->SetDirectory(0);
+	}
+        else
+          eff_Num_b->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_b"));
+
+        if(not eff_Num_c){
+          eff_Num_c = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_c")->Clone("eff_Num_c");
+	  eff_Num_c->SetDirectory(0);
+	}
+        else
+          eff_Num_c->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_c"));
+
+        if(not eff_Num_ucsdg){
+          eff_Num_ucsdg = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_ucsdg")->Clone("eff_Num_ucsdg");
+	  eff_Num_ucsdg->SetDirectory(0);
+	}
+        else
+          eff_Num_ucsdg->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_ucsdg"));
+
+        if(not eff_Denom_b){
+          eff_Denom_b = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_b")->Clone("eff_Denom_b");
+	  eff_Denom_b->SetDirectory(0);
+	}
+        else
+          eff_Denom_b->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_b"));
+	
+        if(not eff_Denom_c){
+          eff_Denom_c = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_c")->Clone("eff_Denom_c");
+	  eff_Denom_c->SetDirectory(0);
+	}
+        else
+          eff_Denom_c->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_c"));
+
+        if(not eff_Denom_ucsdg){
+          eff_Denom_ucsdg = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_ucsdg")->Clone("eff_Denom_ucdsg");
+	  eff_Denom_ucsdg->SetDirectory(0);
+	}
+        else
+          eff_Denom_ucsdg->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_ucsdg"));
+
+        file_temp->Close();
+      }
+    }
+    // compute efficiency
+    TH2F* eff_b = (TH2F*) eff_Num_b->Clone("eff_b");
+    TH2F* eff_c = (TH2F*) eff_Num_b->Clone("eff_c");
+    TH2F* eff_ucsdg = (TH2F*) eff_Num_ucsdg->Clone("eff_ucsdg");
+    eff_b->Divide(eff_Denom_b);
+    eff_c->Divide(eff_Denom_c);
+    eff_ucsdg->Divide(eff_Denom_ucsdg);
+    
+    btagWeights(outtree,eff_b,eff_c,eff_ucsdg);
+  }  
+
+  outfile->cd();
+  if(storeGenTree){
+    TDirectoryFile* gentreedir = new TDirectoryFile("gentree", "gentree");
+    gentreedir->cd();  
+    intree->CloneTree()->Write();
+  }
+  treedir->cd();
+  outtree->Write();
+  outfile->Close();
+  std::cout<<"###################################"<<std::endl;
+
+}
+
+
+
+// function to apply photon+jets selections
+void topelfilter(std::string inputFileName,  // name of a single file or directory path                                                                                        
+		 std::string outputFileName,  // output file name --> single file                                                                                            
+		 bool isMC, // is data or MC                                                                                                                                  
+		 bool applyBTagWeights, // store b-tag weights                                                                                                                
+		 bool isInputDirectory, // to tell wether the inputFileName is a single file or a directory                                                                   
+		 bool isEOS, // if the directory is on eos or not                                                                                                             
+		 int  xsType = 0,
+		 bool storeGenTree = false, // store gentree in the output                                                                                                     
+		 bool dropPuppiBranches = true,
+		 bool dropSubJetsBranches = true
+		 ) {
+
+  std::cout<<"###################################"<<std::endl;
+  std::cout<<"topmufilter --> start function"<<std::endl;
+
+  if(inputFileName == "")
+    inputFileName = "tree.root";
+  if(outputFileName == "")
+    outputFileName = "topeltree.root";
+  
+
+  TFile* infile  =  NULL;
+  TChain* frtree = new TChain("tree/tree");
+  vector<string> fileList;
+  if( not isInputDirectory){
+    infile = TFile::Open(inputFileName.c_str());
+    frtree = (TChain*)infile->Get("tree/tree");
+  }
+  else{
+    frtree = new TChain("tree/tree");
+    fileList = fileListForChain(inputFileName,isEOS);
+    for(auto name : fileList)
+      frtree->AddFile(name.c_str());
+  }
+
+  TChain* intree  = new TChain("gentree/gentree");
+  TH1D*   puRatio = NULL;
+  double  wgtsum;
+
+  if(isMC){
+    if(not isInputDirectory)
+      intree = (TChain*)infile->Get("gentree/gentree");
+    else{
+      intree = new TChain("gentree/gentree");
+      for(auto name : fileList)
+        intree->AddFile(name.c_str());
+    }
+
+    // calculate sum of weights                                                                                                                                                
+    wgtsum = sumwgt(intree);
+    // caluclate puweight                                                                                                                                                     
+    puRatio = pileupwgt(intree);
+  }
+
+
+  // one tight muon + b-jet --> semi-leptonic ttbar events
+  const char* cut = "nmuons == 0 && nelectrons == 1 && ntaus == 0 && nphotons == 0 && nbjets > 0 && el1id >=1 && el1pt > 40 && t1elmet > 175";
+  
+  TFile* outfile = new TFile(outputFileName.c_str(), "RECREATE");
+  outfile->cd();
+  TDirectoryFile* treedir = new TDirectoryFile("tree", "tree");
+  treedir->cd();
+  std::cout<<"topfilter --> apply signal region preselection"<<std::endl;
+  if(xsType > 0 and isMC)
+    frtree->SetBranchStatus("xsec",0);
+  if(dropPuppiBranches){
+    frtree->SetBranchStatus("*puppi*",0);
+    frtree->SetBranchStatus("*Puppi*",0);
+  }
+  if(dropSubJetsBranches){
+    frtree->SetBranchStatus("*SubJet*",0);
+  }
+  frtree->SetBranchStatus("emu*",0);
+  frtree->SetBranchStatus("taumu*",0);
+  frtree->SetBranchStatus("taue*",0);
+
+
+  TTree* outtree = frtree->CopyTree(cut);
+  std::cout<<"topfilter --> outtree events "<<outtree->GetEntries()<<std::endl;
+
+  TBranch* bwgtsum = NULL;
+  TBranch* bwgtpileup = NULL;
+  TBranch* bxsec = NULL;
+  double wgtpileup = 1;
+  double xsec;
+  if(xsType == 1 and isMC)
+    xsec = (wgtsum/outtree->GetEntries())*1000;
+  else if(xsType == 2 and isMC)
+    xsec = (sumxsec(intree)/outtree->GetEntries())*1000;
+
+  if(isMC){
+
+    bwgtsum = outtree->Branch("wgtsum", &wgtsum, "wgtsum/D");
+    bwgtpileup = outtree->Branch("wgtpileup", &wgtpileup, "wgtpileup/D");  
+    if(xsType > 0 and isMC)
+      bxsec      = outtree->Branch("xsec", &xsec, "xsec/D");
+
+    TTreeReader myReader(outtree);
+    TTreeReaderValue<int> putrue(myReader,"putrue");
+
+    std::cout<<"topfilter --> apply sumwgt and puweight"<<std::endl;
+    long int nEvents=0;
+    while(myReader.Next()){
+      std::cout.flush();
+      if(nEvents %100000 == 0) 
+	std::cout<<"\r"<<"Event: "<<100*float(nEvents)/outtree->GetEntries()<<" %";
+	bwgtsum->Fill();
+	wgtpileup = puRatio->GetBinContent(*putrue);
+	bwgtpileup->Fill();    
+	if(xsType > 0 and isMC)
+	  bxsec->Fill();
+	nEvents++;
+    }
+  }
+
+  if(applyBTagWeights and isMC){
+    
+    std::cout<<"topfilter --> apply btag-weight"<<std::endl;
+
+    // applying b-tag weights
+    // take numerators for b-tag
+    TH2F*  eff_Num_b = 0;
+    TH2F*  eff_Num_c = 0;
+    TH2F*  eff_Num_ucsdg = 0;
+    TH2F*  eff_Denom_b = 0;
+    TH2F*  eff_Denom_c = 0;
+    TH2F*  eff_Denom_ucsdg = 0;
+
+    if(not isInputDirectory){ 
+      eff_Num_b = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_b"); 
+      eff_Num_c = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_c"); 
+      eff_Num_ucsdg = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_ucsdg"); 
+      // take denominators
+      eff_Denom_b = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_b"); 
+      eff_Denom_c = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_c"); 
+      eff_Denom_ucsdg = (TH2F*) infile->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_ucsdg"); 
+    }
+    else{
+      TFile* file_temp = 0;
+      for(auto name : fileList){
+        file_temp = TFile::Open(name.c_str());
+        if(not eff_Num_b){
+          eff_Num_b = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_b")->Clone("eff_Num_b");
+	  eff_Num_b->SetDirectory(0);
+	}
+        else
+          eff_Num_b->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_b"));
+
+        if(not eff_Num_c){
+          eff_Num_c = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_c")->Clone("eff_Num_c");
+	  eff_Num_c->SetDirectory(0);
+	}
+        else
+          eff_Num_c->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_c"));
+
+        if(not eff_Num_ucsdg){
+          eff_Num_ucsdg = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_ucsdg")->Clone("eff_Num_ucsdg");
+	  eff_Num_ucsdg->SetDirectory(0);
+	}
+        else
+          eff_Num_ucsdg->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Num_ucsdg"));
+
+        if(not eff_Denom_b){
+          eff_Denom_b = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_b")->Clone("eff_Denom_b");
+	  eff_Denom_b->SetDirectory(0);
+	}
+        else
+          eff_Denom_b->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_b"));
+
+        if(not eff_Denom_c){
+          eff_Denom_c = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_c")->Clone("eff_Denom_c");
+	  eff_Denom_c->SetDirectory(0);
+	}
+        else
+          eff_Denom_c->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_c"));
+
+        if(not eff_Denom_ucsdg){
+          eff_Denom_ucsdg = (TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_ucsdg")->Clone("eff_Denom_ucdsg");
+	  eff_Denom_ucsdg->SetDirectory(0);
+	}
+        else
+          eff_Denom_ucsdg->Add((TH2F*) file_temp->Get("btageff/eff_pfCombinedInclusiveSecondaryVertexV2BJetTags_Medium_Denom_ucsdg"));
+
+        file_temp->Close();
+      }
+    }
+    // compute efficiency
+    TH2F* eff_b = (TH2F*) eff_Num_b->Clone("eff_b");
+    TH2F* eff_c = (TH2F*) eff_Num_b->Clone("eff_c");
+    TH2F* eff_ucsdg = (TH2F*) eff_Num_ucsdg->Clone("eff_ucsdg");
+    eff_b->Divide(eff_Denom_b);
+    eff_c->Divide(eff_Denom_c);
+    eff_ucsdg->Divide(eff_Denom_ucsdg);
+    
+    btagWeights(outtree,eff_b,eff_c,eff_ucsdg);
+  }  
+
+  outfile->cd();
+  if(storeGenTree){
+    TDirectoryFile* gentreedir = new TDirectoryFile("gentree", "gentree");
+    gentreedir->cd(); 
+    intree->CloneTree()->Write();
+  }
+  treedir->cd();
+  outtree->Write();
+  outfile->Close();
+  std::cout<<"###################################"<<std::endl;
+
+}
+
